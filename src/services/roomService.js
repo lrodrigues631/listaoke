@@ -1,14 +1,31 @@
 import { supabase } from '../lib/supabaseClient';
+import { createRoomEvent, listRoomEvents } from './eventService';
+import { listQueueItems, promoteNextWaiting } from './queueService';
 
 function normalizeCode(code) {
   return code.trim().toUpperCase();
+}
+
+async function getRoom(roomId) {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('id', roomId)
+    .single();
+
+  if (error) {
+    throw new Error(`Não foi possível carregar a sala: ${error.message}`);
+  }
+
+  return data;
 }
 
 async function getRoomMembers(roomId) {
   const { data, error } = await supabase
     .from('room_members')
     .select('*')
-    .eq('room_id', roomId);
+    .eq('room_id', roomId)
+    .eq('status', 'active');
 
   if (error) {
     throw new Error(`Não foi possível carregar os membros da sala: ${error.message}`);
@@ -17,19 +34,45 @@ async function getRoomMembers(roomId) {
   return data || [];
 }
 
-async function buildRoomSession({ room, user }) {
-  const members = await getRoomMembers(room.id);
+function enrichQueueItems(items, members) {
+  return items.map((item) => ({
+    ...item,
+    member: members.find((member) => member.id === item.member_id) || null,
+  }));
+}
+
+async function buildRoomSession({ room, user, promoteMissingStage = false }) {
+  let members = await getRoomMembers(room.id);
   const me = members.find((member) => member.user_id === user.id);
 
   if (!me) {
     throw new Error('Sua participação nesta sala não foi encontrada.');
   }
 
+  let queueItems = await listQueueItems(room.id);
+  const hasOnStage = queueItems.some((item) => item.status === 'on_stage');
+  const hasWaiting = queueItems.some((item) => item.status === 'waiting');
+
+  if (promoteMissingStage && me.role === 'owner' && !hasOnStage && hasWaiting) {
+    await promoteNextWaiting(room.id);
+    queueItems = await listQueueItems(room.id);
+  }
+
+  const events = await listRoomEvents(room.id);
+  members = await getRoomMembers(room.id);
+
   return {
     room,
     me,
     members,
+    queueItems: enrichQueueItems(queueItems, members),
+    events,
   };
+}
+
+export async function loadRoomSession({ roomId, user, promoteMissingStage = true }) {
+  const room = await getRoom(roomId);
+  return buildRoomSession({ room, user, promoteMissingStage });
 }
 
 export async function createRoom({ name, userName, user }) {
@@ -54,7 +97,7 @@ export async function createRoom({ name, userName, user }) {
     throw new Error(`Não foi possível criar a sala: ${roomError.message}`);
   }
 
-  const { error: memberError } = await supabase
+  const { data: member, error: memberError } = await supabase
     .from('room_members')
     .insert({
       room_id: room.id,
@@ -62,11 +105,28 @@ export async function createRoom({ name, userName, user }) {
       name: userName.trim(),
       role: 'owner',
       status: 'active',
-    });
+    })
+    .select('*')
+    .single();
 
   if (memberError) {
     throw new Error(`A sala foi criada, mas não foi possível adicionar você como dono: ${memberError.message}`);
   }
+
+  const { error: queueError } = await supabase
+    .from('queue_items')
+    .insert({
+      room_id: room.id,
+      member_id: member.id,
+      sort_order: 0,
+      status: 'on_stage',
+    });
+
+  if (queueError) {
+    throw new Error(`A sala foi criada, mas não foi possível iniciar a fila: ${queueError.message}`);
+  }
+
+  await createRoomEvent({ roomId: room.id, memberId: member.id, type: 'room_created' });
 
   return buildRoomSession({ room, user });
 }

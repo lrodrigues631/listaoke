@@ -1,6 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ensureAnonymousSession } from './services/authService';
-import { createRoom as createRoomOnSupabase, joinRoom as joinRoomOnSupabase } from './services/roomService';
+import { subscribeToRoomChanges } from './services/realtimeService';
+import { createRoom as createRoomOnSupabase, joinRoom as joinRoomOnSupabase, loadRoomSession } from './services/roomService';
+import {
+  addMemberToQueue,
+  finishCurrentPerformance,
+  removeQueueItem,
+  reorderWaitingQueue,
+  skipQueueItem,
+} from './services/queueService';
+
+const EVENT_LABELS = {
+  member_added_to_queue: 'entrou na fila',
+  member_left_queue: 'saiu da fila',
+  member_removed: 'foi removido da fila',
+  member_skipped_turn: 'passou a vez',
+  performance_finished: 'concluiu a apresentação',
+  queue_reordered: 'reordenou a fila',
+  room_created: 'criou a sala',
+};
 
 const MicIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -67,15 +85,6 @@ const TrashIcon = () => (
   </svg>
 );
 
-const UserPlusIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <line x1="19" x2="19" y1="8" y2="14" />
-    <line x1="16" x2="22" y1="11" y2="11" />
-  </svg>
-);
-
 const ArrowLeftIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="m12 19-7-7 7-7" />
@@ -91,19 +100,6 @@ const DoorIcon = () => (
     <path d="M10 12h.01" />
   </svg>
 );
-
-const withLocalRoomState = (roomSession) => {
-  const initialSinger = roomSession.members.find((member) => member.role === 'owner') || roomSession.members[0];
-
-  return {
-    ...roomSession,
-    currentSinger: initialSinger
-      ? { id: `current-${initialSinger.id}`, memberId: initialSinger.id, singer: initialSinger.name, performancesCount: 0 }
-      : null,
-    queue: [],
-    history: [],
-  };
-};
 
 function Shell({ children }) {
   return (
@@ -170,6 +166,25 @@ function SecondaryButton({ children, type = 'button', onClick, disabled }) {
   );
 }
 
+function IconButton({ children, label, onClick, disabled, tone = 'default' }) {
+  const toneClass = tone === 'danger'
+    ? 'hover:border-red-700 hover:text-red-300'
+    : 'hover:border-purple-700 hover:text-purple-300';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-800 bg-slate-900 text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-25 ${toneClass}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function ErrorBanner({ message }) {
   if (!message) return null;
 
@@ -194,25 +209,6 @@ function LoadingScreen({ message }) {
   );
 }
 
-function IconButton({ children, label, onClick, disabled, tone = 'default' }) {
-  const toneClass = tone === 'danger'
-    ? 'hover:border-red-700 hover:text-red-300'
-    : 'hover:border-purple-700 hover:text-purple-300';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      aria-label={label}
-      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-800 bg-slate-900 text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-25 ${toneClass}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function HomeScreen({ onCreate, onJoin }) {
   const [roomCode, setRoomCode] = useState('');
 
@@ -228,7 +224,7 @@ function HomeScreen({ onCreate, onJoin }) {
         <section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl shadow-slate-950/50 sm:p-6">
           <div className="mb-6">
             <h2 className="text-3xl font-black tracking-tight text-white">Organize a fila da festa</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Crie uma sala local mockada ou entre com um código para testar o fluxo inicial.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Crie uma sala online ou entre com um código compartilhado.</p>
           </div>
 
           <div className="grid gap-3">
@@ -316,84 +312,79 @@ function JoinRoomScreen({ initialCode, onBack, onJoinRoom, isBusy, error }) {
   );
 }
 
-function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
-  const [newSingerName, setNewSingerName] = useState('');
+function RoomScreen({ session, onReload, onLeaveRoom }) {
   const [notice, setNotice] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const { room, me, members, currentSinger, queue, history } = session;
+  const { room, me, members, queueItems, events } = session;
   const isOwner = me.role === 'owner';
-  const isMyTurn = currentSinger?.memberId === me.id;
-  const myQueuedItem = queue.find((item) => item.memberId === me.id);
+  const currentItem = queueItems.find((item) => item.status === 'on_stage') || null;
+  const waitingItems = queueItems
+    .filter((item) => item.status === 'waiting')
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const activeOwnItem = queueItems.find((item) => (
+    item.member_id === me.id && (item.status === 'waiting' || item.status === 'on_stage')
+  ));
+  const currentName = currentItem?.member?.name || 'Participante';
+  const guestCanActOnCurrent = !isOwner && currentItem?.member_id === me.id;
 
-  const updateRoom = (changes, message) => {
-    onUpdateSession((current) => ({
-      ...current,
-      ...changes,
-    }));
-    if (message) setNotice(message);
-  };
+  const runAction = async (action, successMessage) => {
+    setActionLoading(true);
+    setActionError('');
+    setNotice('');
 
-  const addQueueItem = ({ name, memberId }) => {
-    const singerName = name.trim();
-    if (!singerName) return;
-
-    updateRoom({
-      queue: [
-        ...queue,
-        {
-          id: `queue-${Date.now()}`,
-          memberId,
-          singer: singerName,
-          performancesCount: 0,
-        },
-      ],
-    }, `${singerName} entrou no fim da fila.`);
-  };
-
-  const handleOwnerAddSinger = (event) => {
-    event.preventDefault();
-    addQueueItem({ name: newSingerName, memberId: `manual-${Date.now()}` });
-    setNewSingerName('');
+    try {
+      await action();
+      if (successMessage) setNotice(successMessage);
+      await onReload();
+    } catch (error) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleJoinQueue = () => {
-    if (isMyTurn || myQueuedItem) return;
-    addQueueItem({ name: me.name, memberId: me.id });
+    runAction(
+      () => addMemberToQueue({ roomId: room.id, memberId: me.id }),
+      'Você entrou na fila.'
+    );
   };
 
-  const handleRemoveSinger = (id, name) => {
-    updateRoom({ queue: queue.filter((item) => item.id !== id) }, `${name} saiu da fila.`);
+  const handleRemoveItem = (item) => {
+    runAction(
+      () => removeQueueItem({ roomId: room.id, queueItem: item, actorMemberId: me.id, isOwner }),
+      `${item.member?.name || 'Participante'} saiu da fila.`
+    );
+  };
+
+  const handleSkipItem = (item) => {
+    runAction(
+      () => skipQueueItem({ roomId: room.id, queueItem: item, actorMemberId: me.id, isOwner }),
+      `${item.member?.name || 'Participante'} passou a vez.`
+    );
+  };
+
+  const handleFinishCurrent = () => {
+    if (!currentItem) return;
+    runAction(
+      () => finishCurrentPerformance({ roomId: room.id, queueItem: currentItem }),
+      `${currentName} concluiu a apresentação.`
+    );
   };
 
   const handleMove = (index, direction) => {
     const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= queue.length) return;
+    if (!isOwner || nextIndex < 0 || nextIndex >= waitingItems.length) return;
 
-    const newQueue = [...queue];
-    [newQueue[index], newQueue[nextIndex]] = [newQueue[nextIndex], newQueue[index]];
-    updateRoom({ queue: newQueue });
-  };
+    const reordered = [...waitingItems];
+    [reordered[index], reordered[nextIndex]] = [reordered[nextIndex], reordered[index]];
 
-  const rotateCurrentToQueue = ({ addToHistory }) => {
-    if (!currentSinger || queue.length === 0) return;
-
-    const now = new Date();
-    const finishedAt = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    const rotatedSinger = {
-      ...currentSinger,
-      performancesCount: currentSinger.performancesCount + (addToHistory ? 1 : 0),
-    };
-    const nextQueue = [...queue, rotatedSinger];
-    const nextSinger = nextQueue[0];
-    const nextHistory = addToHistory
-      ? [{ id: `h-${Date.now()}`, singer: currentSinger.singer, finishedAt }, ...history]
-      : history;
-
-    updateRoom({
-      currentSinger: nextSinger,
-      queue: nextQueue.slice(1),
-      history: nextHistory,
-    }, addToHistory ? `${currentSinger.singer} concluiu a apresentação.` : `${currentSinger.singer} passou a vez.`);
+    runAction(
+      () => reorderWaitingQueue({ roomId: room.id, waitingItems: reordered, actorMemberId: me.id }),
+      'Fila reordenada.'
+    );
   };
 
   const handleCloseRoom = () => {
@@ -404,11 +395,9 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
     setNotice('Transferir dono ainda não foi conectado ao Supabase nesta etapa.');
   };
 
-  const guestCanActOnCurrent = !isOwner && isMyTurn;
-
   return (
     <Shell>
-      <BrandHeader subtitle="sala conectada ao Supabase" />
+      <BrandHeader subtitle="sala em tempo real" />
 
       <main className="grid flex-1 gap-5 py-4 lg:grid-cols-12 lg:gap-6">
         <section className="lg:col-span-5">
@@ -429,8 +418,9 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
                 {notice}
               </div>
             )}
+            <ErrorBanner message={actionError} />
 
-            <div className="mb-5 rounded-xl border border-slate-800 bg-slate-950/70 p-4">
+            <div className="mb-5 mt-5 rounded-xl border border-slate-800 bg-slate-950/70 p-4">
               <h3 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-300">
                 <UsersIcon /> Membros
               </h3>
@@ -454,25 +444,25 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
                 Cantando agora
               </span>
 
-              {currentSinger ? (
+              {currentItem ? (
                 <div className="mt-5">
-                  <h3 className="break-words text-4xl font-black text-white">{currentSinger.singer}</h3>
+                  <h3 className="break-words text-4xl font-black text-white">{currentName}</h3>
                   <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-400">
                     <SparklesIcon />
-                    Já cantou {currentSinger.performancesCount} vezes hoje
+                    Participante ativo da sessão
                   </p>
                 </div>
               ) : (
                 <p className="mt-5 text-sm text-slate-500">Ninguém cantando agora.</p>
               )}
 
-              {(isOwner || guestCanActOnCurrent) && currentSinger && (
+              {(isOwner || guestCanActOnCurrent) && currentItem && (
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {isOwner && (
                     <button
                       type="button"
-                      onClick={() => rotateCurrentToQueue({ addToHistory: true })}
-                      disabled={queue.length === 0}
+                      onClick={handleFinishCurrent}
+                      disabled={actionLoading}
                       className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-3 text-sm font-black text-white transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <CheckIcon /> Concluir
@@ -480,8 +470,8 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
                   )}
                   <button
                     type="button"
-                    onClick={() => rotateCurrentToQueue({ addToHistory: false })}
-                    disabled={queue.length === 0}
+                    onClick={() => handleSkipItem(currentItem)}
+                    disabled={actionLoading}
                     className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-purple-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Passar vez <SkipForwardIcon />
@@ -491,27 +481,21 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
             </div>
 
             {isOwner ? (
-              <div className="mt-5 grid gap-3">
-                <form onSubmit={handleOwnerAddSinger} className="grid gap-3">
-                  <TextInput label="Adicionar pessoa" value={newSingerName} onChange={setNewSingerName} placeholder="Nome do convidado" />
-                  <PrimaryButton type="submit" disabled={!newSingerName.trim()}>Inserir na fila</PrimaryButton>
-                </form>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <SecondaryButton onClick={handleTransferOwner}>Transferir dono</SecondaryButton>
-                  <button
-                    type="button"
-                    onClick={handleCloseRoom}
-                    className="min-h-12 rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-200 transition hover:border-red-700"
-                  >
-                    Fechar sala
-                  </button>
-                </div>
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <SecondaryButton onClick={handleTransferOwner}>Transferir dono</SecondaryButton>
+                <button
+                  type="button"
+                  onClick={handleCloseRoom}
+                  className="min-h-12 rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-200 transition hover:border-red-700"
+                >
+                  Fechar sala
+                </button>
               </div>
             ) : (
               <div className="mt-5 grid gap-3">
-                <PrimaryButton onClick={handleJoinQueue} disabled={Boolean(isMyTurn || myQueuedItem)}>Entrar na fila</PrimaryButton>
-                {myQueuedItem && (
-                  <SecondaryButton onClick={() => handleRemoveSinger(myQueuedItem.id, myQueuedItem.singer)}>Sair da minha vez</SecondaryButton>
+                <PrimaryButton onClick={handleJoinQueue} disabled={actionLoading || Boolean(activeOwnItem)}>Entrar na fila</PrimaryButton>
+                {activeOwnItem && (
+                  <SecondaryButton onClick={() => handleRemoveItem(activeOwnItem)} disabled={actionLoading}>Sair da minha vez</SecondaryButton>
                 )}
               </div>
             )}
@@ -528,15 +512,16 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
               <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-white">
                 <UsersIcon /> Fila
               </h2>
-              <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-purple-300">{queue.length} pessoas</span>
+              <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-purple-300">{waitingItems.length} pessoas</span>
             </div>
 
             <div className="grid gap-2">
-              {queue.length === 0 ? (
+              {waitingItems.length === 0 ? (
                 <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">A fila está vazia.</p>
-              ) : queue.map((item, index) => {
-                const isMine = item.memberId === me.id;
+              ) : waitingItems.map((item, index) => {
+                const isMine = item.member_id === me.id;
                 const canManageItem = isOwner || isMine;
+                const itemName = item.member?.name || 'Participante';
 
                 return (
                   <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3">
@@ -545,9 +530,9 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
                         {index + 1}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="truncate text-base font-bold text-white">{item.singer}</h3>
+                        <h3 className="truncate text-base font-bold text-white">{itemName}</h3>
                         <p className="text-xs text-slate-400">
-                          Cantou {item.performancesCount} vezes {isMine ? '- você' : ''}
+                          Aguardando {isMine ? '- você' : ''}
                         </p>
                       </div>
                     </div>
@@ -556,15 +541,18 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
                       <div className="flex items-center gap-1">
                         {isOwner && (
                           <>
-                            <IconButton label="Subir posição" onClick={() => handleMove(index, -1)} disabled={index === 0}>
+                            <IconButton label="Subir posição" onClick={() => handleMove(index, -1)} disabled={actionLoading || index === 0}>
                               <ChevronUpIcon />
                             </IconButton>
-                            <IconButton label="Descer posição" onClick={() => handleMove(index, 1)} disabled={index === queue.length - 1}>
+                            <IconButton label="Descer posição" onClick={() => handleMove(index, 1)} disabled={actionLoading || index === waitingItems.length - 1}>
                               <ChevronDownIcon />
                             </IconButton>
                           </>
                         )}
-                        <IconButton label="Remover da fila" onClick={() => handleRemoveSinger(item.id, item.singer)} tone="danger">
+                        <IconButton label="Passar vez" onClick={() => handleSkipItem(item)} disabled={actionLoading}>
+                          <SkipForwardIcon />
+                        </IconButton>
+                        <IconButton label="Remover da fila" onClick={() => handleRemoveItem(item)} disabled={actionLoading} tone="danger">
                           <TrashIcon />
                         </IconButton>
                       </div>
@@ -580,14 +568,21 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
               <HistoryIcon /> Histórico
             </h2>
             <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
-              {history.length === 0 ? (
-                <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">Nenhuma apresentação concluída.</p>
-              ) : history.map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
-                  <span className="font-bold text-slate-200">{item.singer}</span>
-                  <span className="font-mono text-xs text-slate-500">{item.finishedAt}</span>
-                </div>
-              ))}
+              {events.length === 0 ? (
+                <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">Nenhum evento registrado.</p>
+              ) : events.map((event) => {
+                const member = members.find((item) => item.id === event.member_id);
+                const time = event.created_at
+                  ? new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                  : '';
+
+                return (
+                  <div key={event.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
+                    <span className="font-bold text-slate-200">{member?.name || 'Sala'} {EVENT_LABELS[event.type] || event.type}</span>
+                    <span className="font-mono text-xs text-slate-500">{time}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -624,6 +619,33 @@ export default function App() {
     };
   }, []);
 
+  const reloadSession = useCallback(async () => {
+    if (!session?.room?.id || !user) return;
+
+    const nextSession = await loadRoomSession({ roomId: session.room.id, user });
+    setSession(nextSession);
+  }, [session?.room?.id, user]);
+
+  useEffect(() => {
+    if (!session?.room?.id || !user) return undefined;
+
+    let reloadTimer = null;
+    const unsubscribe = subscribeToRoomChanges({
+      roomId: session.room.id,
+      onChange: () => {
+        window.clearTimeout(reloadTimer);
+        reloadTimer = window.setTimeout(() => {
+          reloadSession().catch((realtimeError) => setError(realtimeError.message));
+        }, 120);
+      },
+    });
+
+    return () => {
+      window.clearTimeout(reloadTimer);
+      unsubscribe();
+    };
+  }, [reloadSession, session?.room?.id, user]);
+
   const openJoin = (code = '') => {
     setError('');
     setPendingCode(code.trim().toUpperCase());
@@ -641,7 +663,7 @@ export default function App() {
 
     try {
       const roomSession = await createRoomOnSupabase({ name: roomName, userName, user });
-      setSession(withLocalRoomState(roomSession));
+      setSession(roomSession);
       setScreen('room');
     } catch (createError) {
       setError(createError.message);
@@ -661,7 +683,7 @@ export default function App() {
 
     try {
       const roomSession = await joinRoomOnSupabase({ code: roomCode, userName, user });
-      setSession(withLocalRoomState(roomSession));
+      setSession(roomSession);
       setScreen('room');
     } catch (joinError) {
       setError(joinError.message);
@@ -707,7 +729,7 @@ export default function App() {
     return (
       <RoomScreen
         session={session}
-        onUpdateSession={setSession}
+        onReload={reloadSession}
         onLeaveRoom={() => {
           setSession(null);
           setError('');
