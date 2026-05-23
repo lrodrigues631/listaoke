@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 // --- ÍCONES SVG NATIVOS PARA EVITAR FALHAS DE CARREGAMENTO ---
 const MicIcon = () => (
@@ -6,19 +6,6 @@ const MicIcon = () => (
     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
     <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
     <line x1="12" x2="12" y1="19" y2="22"/>
-  </svg>
-);
-
-const PlayIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
-    <polygon points="6 3 20 12 6 21 6 3"/>
-  </svg>
-);
-
-const PauseIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
-    <rect width="4" height="16" x="6" y="4" rx="1"/>
-    <rect width="4" height="16" x="14" y="4" rx="1"/>
   </svg>
 );
 
@@ -127,26 +114,7 @@ export default function App() {
   // Estados de controle do formulário
   const [newSingerName, setNewSingerName] = useState('');
 
-  // Estados do Cronômetro de Palco (4 minutos padrão)
-  const DEFAULT_STAGE_TIME = 240; 
-  const [timeLeft, setTimeLeft] = useState(DEFAULT_STAGE_TIME);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  
   const [showNotification, setShowNotification] = useState(null);
-
-  // Efeito do cronômetro decrescente
-  useEffect(() => {
-    let interval = null;
-    if (isTimerRunning && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && isTimerRunning) {
-      setIsTimerRunning(false);
-      triggerNotification('Tempo sugerido de palco esgotado!', 'info');
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timeLeft]);
 
   // Notificações flutuantes seguras dentro do painel
   const triggerNotification = (message, type = 'success') => {
@@ -154,13 +122,6 @@ export default function App() {
     setTimeout(() => {
       setShowNotification(null);
     }, 4000);
-  };
-
-  // Conversor de segundos para formato de mm:ss
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   // ADICIONAR NOVA PESSOA (Entra no fim da fila)
@@ -211,8 +172,6 @@ export default function App() {
 
     setCurrentSinger(nextSinger);
     setQueue(updatedQueue.slice(1));
-    setTimeLeft(DEFAULT_STAGE_TIME);
-    setIsTimerRunning(true);
 
     triggerNotification(`🎉 ${currentSinger.singer} concluiu! Foi para o fim da fila. Agora no palco: ${nextSinger.singer}`);
   };
@@ -226,8 +185,6 @@ export default function App() {
 
     setCurrentSinger(nextSinger);
     setQueue(updatedQueue.slice(1));
-    setTimeLeft(DEFAULT_STAGE_TIME);
-    setIsTimerRunning(true);
 
     triggerNotification(`⏭️ Turno de ${currentSinger.singer} adiado para o final da fila.`);
   };
@@ -323,43 +280,8 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Cronômetro */}
-                <div className="mt-8 bg-slate-950/90 p-4 rounded-xl border border-slate-850">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Tempo de Palco</span>
-                    <span className="text-xl font-mono font-bold text-pink-400">{formatTime(timeLeft)}</span>
-                  </div>
-                  
-                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-1000 ease-linear"
-                      style={{ width: `${(timeLeft / DEFAULT_STAGE_TIME) * 100}%` }}
-                    ></div>
-                  </div>
-
-                  <div className="flex gap-2 mt-4">
-                    <button 
-                      onClick={() => setIsTimerRunning(!isTimerRunning)}
-                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-                        isTimerRunning 
-                          ? 'bg-amber-600/10 text-amber-300 hover:bg-amber-600/20 border border-amber-500/20' 
-                          : 'bg-green-600/10 text-green-300 hover:bg-green-600/20 border border-green-500/20'
-                      }`}
-                    >
-                      {isTimerRunning ? 'Pausar' : 'Iniciar'}
-                    </button>
-
-                    <button 
-                      onClick={() => setTimeLeft(DEFAULT_STAGE_TIME)}
-                      className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                    >
-                      Zerar
-                    </button>
-                  </div>
-                </div>
-
                 {/* Ações */}
-                <div className="grid grid-cols-2 gap-4 mt-6">
+                <div className="grid grid-cols-2 gap-4 mt-8">
                   <button 
                     onClick={handleFinishCurrent}
                     className="py-3.5 px-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-600/20 text-xs md:text-sm"
