@@ -1,16 +1,6 @@
-import React, { useState } from 'react';
-
-const INITIAL_QUEUE = [
-  { id: 'ravi', memberId: 'member-ravi', singer: 'Ravi', performancesCount: 0 },
-  { id: 'ferreira', memberId: 'member-ferreira', singer: 'Ferreira', performancesCount: 0 },
-  { id: 'giovanna', memberId: 'member-giovanna', singer: 'Giovanna', performancesCount: 0 },
-  { id: 'byeu', memberId: 'member-byeu', singer: 'Byeu', performancesCount: 0 },
-];
-
-const INITIAL_HISTORY = [
-  { id: 'h-israel', singer: 'Israel', finishedAt: 'Rodada inicial' },
-  { id: 'h-leandro', singer: 'Leandro', finishedAt: 'Rodada inicial' },
-];
+import React, { useEffect, useState } from 'react';
+import { ensureAnonymousSession } from './services/authService';
+import { createRoom as createRoomOnSupabase, joinRoom as joinRoomOnSupabase } from './services/roomService';
 
 const MicIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -102,33 +92,16 @@ const DoorIcon = () => (
   </svg>
 );
 
-const generateRoomCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
-
-const createMockRoom = ({ roomName, userName, role, code }) => {
-  const me = {
-    id: `member-${Date.now()}`,
-    name: userName.trim(),
-    role,
-  };
-
-  const mockOwner = {
-    id: 'member-host-mock',
-    name: 'Dono mockado',
-    role: role === 'owner' ? 'guest' : 'owner',
-  };
+const withLocalRoomState = (roomSession) => {
+  const initialSinger = roomSession.members.find((member) => member.role === 'owner') || roomSession.members[0];
 
   return {
-    room: {
-      id: `room-${Date.now()}`,
-      name: roomName.trim() || 'Karaokê de sábado',
-      code: (code || generateRoomCode()).trim().toUpperCase(),
-      isClosed: false,
-    },
-    me,
-    members: role === 'owner' ? [me, mockOwner] : [mockOwner, me],
-    currentSinger: { id: 'fanny', memberId: 'member-fanny', singer: 'Fanny', performancesCount: 0 },
-    queue: INITIAL_QUEUE,
-    history: INITIAL_HISTORY,
+    ...roomSession,
+    currentSinger: initialSinger
+      ? { id: `current-${initialSinger.id}`, memberId: initialSinger.id, singer: initialSinger.name, performancesCount: 0 }
+      : null,
+    queue: [],
+    history: [],
   };
 };
 
@@ -184,15 +157,40 @@ function PrimaryButton({ children, type = 'button', onClick, disabled }) {
   );
 }
 
-function SecondaryButton({ children, type = 'button', onClick }) {
+function SecondaryButton({ children, type = 'button', onClick, disabled }) {
   return (
     <button
       type={type}
       onClick={onClick}
-      className="min-h-12 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-purple-700 hover:text-white"
+      disabled={disabled}
+      className="min-h-12 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-purple-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
     </button>
+  );
+}
+
+function ErrorBanner({ message }) {
+  if (!message) return null;
+
+  return (
+    <div className="rounded-xl border border-red-800/70 bg-red-950/40 px-4 py-3 text-sm font-semibold text-red-100">
+      {message}
+    </div>
+  );
+}
+
+function LoadingScreen({ message }) {
+  return (
+    <Shell>
+      <BrandHeader subtitle="preparando sua sessão" />
+      <main className="flex flex-1 items-center justify-center py-8">
+        <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 text-center shadow-2xl shadow-slate-950/50">
+          <div className="mx-auto mb-4 h-10 w-10 animate-pulse rounded-xl bg-purple-600" />
+          <p className="text-sm font-bold text-slate-300">{message}</p>
+        </div>
+      </main>
+    </Shell>
   );
 }
 
@@ -252,7 +250,7 @@ function HomeScreen({ onCreate, onJoin }) {
   );
 }
 
-function CreateRoomScreen({ onBack, onCreateRoom }) {
+function CreateRoomScreen({ onBack, onCreateRoom, isBusy, error }) {
   const [roomName, setRoomName] = useState('');
   const [userName, setUserName] = useState('');
 
@@ -272,9 +270,12 @@ function CreateRoomScreen({ onBack, onCreateRoom }) {
           </button>
           <h2 className="mb-5 text-2xl font-black text-white">Criar sala</h2>
           <form onSubmit={handleSubmit} className="grid gap-4">
+            <ErrorBanner message={error} />
             <TextInput label="Nome da sala" value={roomName} onChange={setRoomName} placeholder="Karaokê da galera" autoFocus />
             <TextInput label="Seu nome" value={userName} onChange={setUserName} placeholder="Como vão te chamar" />
-            <PrimaryButton type="submit" disabled={!roomName.trim() || !userName.trim()}>Criar</PrimaryButton>
+            <PrimaryButton type="submit" disabled={isBusy || !roomName.trim() || !userName.trim()}>
+              {isBusy ? 'Criando...' : 'Criar'}
+            </PrimaryButton>
           </form>
         </section>
       </main>
@@ -282,7 +283,7 @@ function CreateRoomScreen({ onBack, onCreateRoom }) {
   );
 }
 
-function JoinRoomScreen({ initialCode, onBack, onJoinRoom }) {
+function JoinRoomScreen({ initialCode, onBack, onJoinRoom, isBusy, error }) {
   const [roomCode, setRoomCode] = useState(initialCode);
   const [userName, setUserName] = useState('');
 
@@ -304,7 +305,10 @@ function JoinRoomScreen({ initialCode, onBack, onJoinRoom }) {
           <form onSubmit={handleSubmit} className="grid gap-4">
             <TextInput label="Código da sala" value={roomCode} onChange={(value) => setRoomCode(value.toUpperCase())} placeholder="Ex: ABC123" autoFocus />
             <TextInput label="Seu nome" value={userName} onChange={setUserName} placeholder="Como vão te chamar" />
-            <PrimaryButton type="submit" disabled={!roomCode.trim() || !userName.trim()}>Entrar</PrimaryButton>
+            <ErrorBanner message={error} />
+            <PrimaryButton type="submit" disabled={isBusy || !roomCode.trim() || !userName.trim()}>
+              {isBusy ? 'Entrando...' : 'Entrar'}
+            </PrimaryButton>
           </form>
         </section>
       </main>
@@ -393,28 +397,18 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
   };
 
   const handleCloseRoom = () => {
-    updateRoom({ room: { ...room, isClosed: true } }, 'Sala fechada localmente.');
+    setNotice('Fechar sala ainda não foi conectado ao Supabase nesta etapa.');
   };
 
   const handleTransferOwner = () => {
-    const nextOwner = members.find((member) => member.id !== me.id);
-    if (!nextOwner) return;
-
-    updateRoom({
-      me: { ...me, role: 'guest' },
-      members: members.map((member) => {
-        if (member.id === me.id) return { ...member, role: 'guest' };
-        if (member.id === nextOwner.id) return { ...member, role: 'owner' };
-        return member;
-      }),
-    }, `Dono transferido para ${nextOwner.name}.`);
+    setNotice('Transferir dono ainda não foi conectado ao Supabase nesta etapa.');
   };
 
   const guestCanActOnCurrent = !isOwner && isMyTurn;
 
   return (
     <Shell>
-      <BrandHeader subtitle={room.isClosed ? 'sala fechada localmente' : 'sala mockada local'} />
+      <BrandHeader subtitle="sala conectada ao Supabase" />
 
       <main className="grid flex-1 gap-5 py-4 lg:grid-cols-12 lg:gap-6">
         <section className="lg:col-span-5">
@@ -435,6 +429,24 @@ function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
                 {notice}
               </div>
             )}
+
+            <div className="mb-5 rounded-xl border border-slate-800 bg-slate-950/70 p-4">
+              <h3 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-300">
+                <UsersIcon /> Membros
+              </h3>
+              <div className="grid gap-2">
+                {members.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-900 px-3 py-2 text-sm">
+                    <span className="min-w-0 truncate font-bold text-slate-100">
+                      {member.name}{member.user_id === me.user_id ? ' (você)' : ''}
+                    </span>
+                    <span className="shrink-0 rounded-full border border-slate-700 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      {member.role === 'owner' ? 'Dono' : 'Convidado'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
               <span className="flex w-max items-center gap-2 rounded-full border border-pink-500/20 bg-pink-500/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-pink-400">
@@ -588,33 +600,107 @@ export default function App() {
   const [screen, setScreen] = useState('home');
   const [pendingCode, setPendingCode] = useState('');
   const [session, setSession] = useState(null);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    ensureAnonymousSession()
+      .then((currentUser) => {
+        if (isMounted) setUser(currentUser);
+      })
+      .catch((authError) => {
+        if (isMounted) setError(authError.message);
+      })
+      .finally(() => {
+        if (isMounted) setAuthLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const openJoin = (code = '') => {
+    setError('');
     setPendingCode(code.trim().toUpperCase());
     setScreen('join');
   };
 
-  const createRoom = ({ roomName, userName }) => {
-    setSession(createMockRoom({ roomName, userName, role: 'owner' }));
-    setScreen('room');
+  const createRoom = async ({ roomName, userName }) => {
+    if (!user) {
+      setError('Sessão anônima ainda não está pronta. Tente novamente em alguns segundos.');
+      return;
+    }
+
+    setIsBusy(true);
+    setError('');
+
+    try {
+      const roomSession = await createRoomOnSupabase({ name: roomName, userName, user });
+      setSession(withLocalRoomState(roomSession));
+      setScreen('room');
+    } catch (createError) {
+      setError(createError.message);
+    } finally {
+      setIsBusy(false);
+    }
   };
 
-  const joinRoom = ({ roomCode, userName }) => {
-    setSession(createMockRoom({
-      roomName: `Sala ${roomCode.trim().toUpperCase()}`,
-      userName,
-      role: 'guest',
-      code: roomCode,
-    }));
-    setScreen('room');
+  const joinRoom = async ({ roomCode, userName }) => {
+    if (!user) {
+      setError('Sessão anônima ainda não está pronta. Tente novamente em alguns segundos.');
+      return;
+    }
+
+    setIsBusy(true);
+    setError('');
+
+    try {
+      const roomSession = await joinRoomOnSupabase({ code: roomCode, userName, user });
+      setSession(withLocalRoomState(roomSession));
+      setScreen('room');
+    } catch (joinError) {
+      setError(joinError.message);
+    } finally {
+      setIsBusy(false);
+    }
   };
+
+  if (authLoading) {
+    return <LoadingScreen message="Entrando anonimamente..." />;
+  }
 
   if (screen === 'create') {
-    return <CreateRoomScreen onBack={() => setScreen('home')} onCreateRoom={createRoom} />;
+    return (
+      <CreateRoomScreen
+        onBack={() => {
+          setError('');
+          setScreen('home');
+        }}
+        onCreateRoom={createRoom}
+        isBusy={isBusy}
+        error={error}
+      />
+    );
   }
 
   if (screen === 'join') {
-    return <JoinRoomScreen initialCode={pendingCode} onBack={() => setScreen('home')} onJoinRoom={joinRoom} />;
+    return (
+      <JoinRoomScreen
+        initialCode={pendingCode}
+        onBack={() => {
+          setError('');
+          setScreen('home');
+        }}
+        onJoinRoom={joinRoom}
+        isBusy={isBusy}
+        error={error}
+      />
+    );
   }
 
   if (screen === 'room' && session) {
@@ -624,11 +710,26 @@ export default function App() {
         onUpdateSession={setSession}
         onLeaveRoom={() => {
           setSession(null);
+          setError('');
           setScreen('home');
         }}
       />
     );
   }
 
-  return <HomeScreen onCreate={() => setScreen('create')} onJoin={openJoin} />;
+  return (
+    <>
+      {error && (
+        <Shell>
+          <BrandHeader subtitle="erro de autenticação" />
+          <main className="flex flex-1 items-center justify-center py-8">
+            <section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5">
+              <ErrorBanner message={error} />
+            </section>
+          </main>
+        </Shell>
+      )}
+      {!error && <HomeScreen onCreate={() => setScreen('create')} onJoin={openJoin} />}
+    </>
+  );
 }
