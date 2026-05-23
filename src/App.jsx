@@ -1,418 +1,634 @@
 import React, { useState } from 'react';
 
-// --- ÍCONES SVG NATIVOS PARA EVITAR FALHAS DE CARREGAMENTO ---
+const INITIAL_QUEUE = [
+  { id: 'ravi', memberId: 'member-ravi', singer: 'Ravi', performancesCount: 0 },
+  { id: 'ferreira', memberId: 'member-ferreira', singer: 'Ferreira', performancesCount: 0 },
+  { id: 'giovanna', memberId: 'member-giovanna', singer: 'Giovanna', performancesCount: 0 },
+  { id: 'byeu', memberId: 'member-byeu', singer: 'Byeu', performancesCount: 0 },
+];
+
+const INITIAL_HISTORY = [
+  { id: 'h-israel', singer: 'Israel', finishedAt: 'Rodada inicial' },
+  { id: 'h-leandro', singer: 'Leandro', finishedAt: 'Rodada inicial' },
+];
+
 const MicIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-    <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
-    <line x1="12" x2="12" y1="19" y2="22"/>
+    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+    <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+    <line x1="12" x2="12" y1="19" y2="22" />
   </svg>
 );
 
 const UsersIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-    <circle cx="9" cy="7" r="4"/>
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-  </svg>
-);
-
-const ClockIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/>
-    <polyline points="12 6 12 12 16 14"/>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
   </svg>
 );
 
 const CheckIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12"/>
+    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
 const SkipForwardIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="5 4 15 12 5 20 5 4"/>
-    <line x1="19" x2="19" y1="5" y2="19"/>
+    <polygon points="5 4 15 12 5 20 5 4" />
+    <line x1="19" x2="19" y1="5" y2="19" />
   </svg>
 );
 
 const HistoryIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-    <polyline points="3 3 3 8 8 8"/>
-    <line x1="12" x2="12" y1="7" y2="12"/>
-    <line x1="12" x2="16" y1="12" y2="12"/>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <polyline points="3 3 3 8 8 8" />
+    <line x1="12" x2="12" y1="7" y2="12" />
+    <line x1="12" x2="16" y1="12" y2="12" />
   </svg>
 );
 
 const SparklesIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-    <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z"/>
-    <path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"/>
+    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
   </svg>
 );
 
 const ChevronUpIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m18 15-6-6-6 6"/>
+    <path d="m18 15-6-6-6 6" />
   </svg>
 );
 
 const ChevronDownIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6 9 6 6 6-6"/>
+    <path d="m6 9 6 6 6-6" />
   </svg>
 );
 
 const TrashIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 6h18"/>
-    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+    <path d="M3 6h18" />
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
   </svg>
 );
 
 const UserPlusIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-    <circle cx="9" cy="7" r="4"/>
-    <line x1="19" x2="19" y1="8" y2="14"/>
-    <line x1="16" x2="22" y1="11" y2="11"/>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <line x1="19" x2="19" y1="8" y2="14" />
+    <line x1="16" x2="22" y1="11" y2="11" />
   </svg>
 );
 
+const ArrowLeftIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m12 19-7-7 7-7" />
+    <path d="M19 12H5" />
+  </svg>
+);
 
-export default function App() {
-  // Fila de espera ordenada exatamente com o seu fluxo de rotação original
-  const [queue, setQueue] = useState([
-    { id: 'ravi', singer: 'Ravi', performancesCount: 0 },
-    { id: 'ferreira', singer: 'Ferreira', performancesCount: 0 },
-    { id: 'giovanna', singer: 'Giovanna', performancesCount: 0 },
-    { id: 'byeu', singer: 'Byeu', performancesCount: 0 },
-    { id: 'carol', singer: 'Carol', performancesCount: 0 },
-    { id: 'arthur', singer: 'Arthur', performancesCount: 0 },
-    { id: 'leandro', singer: 'Leandro', performancesCount: 1 },
-    { id: 'israel', singer: 'Israel', performancesCount: 1 }
-  ]);
+const DoorIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13 4h3a2 2 0 0 1 2 2v14" />
+    <path d="M2 20h20" />
+    <path d="M13 20V2L6 4v16" />
+    <path d="M10 12h.01" />
+  </svg>
+);
 
-  // Fanny está no palco cantando neste momento
-  const [currentSinger, setCurrentSinger] = useState({
-    id: 'fanny',
-    singer: 'Fanny',
-    performancesCount: 0
-  });
+const generateRoomCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
-  // Histórico de apresentações finalizadas
-  const [history, setHistory] = useState([
-    { id: 'h-israel', singer: 'Israel', finishedAt: 'Rodada Inicial' },
-    { id: 'h-leandro', singer: 'Leandro', finishedAt: 'Rodada Inicial' }
-  ]);
+const createMockRoom = ({ roomName, userName, role, code }) => {
+  const me = {
+    id: `member-${Date.now()}`,
+    name: userName.trim(),
+    role,
+  };
 
-  // Estados de controle do formulário
+  const mockOwner = {
+    id: 'member-host-mock',
+    name: 'Dono mockado',
+    role: role === 'owner' ? 'guest' : 'owner',
+  };
+
+  return {
+    room: {
+      id: `room-${Date.now()}`,
+      name: roomName.trim() || 'Karaokê de sábado',
+      code: (code || generateRoomCode()).trim().toUpperCase(),
+      isClosed: false,
+    },
+    me,
+    members: role === 'owner' ? [me, mockOwner] : [mockOwner, me],
+    currentSinger: { id: 'fanny', memberId: 'member-fanny', singer: 'Fanny', performancesCount: 0 },
+    queue: INITIAL_QUEUE,
+    history: INITIAL_HISTORY,
+  };
+};
+
+function Shell({ children }) {
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-purple-600 selection:text-white">
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-6 lg:px-8">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function BrandHeader({ subtitle }) {
+  return (
+    <header className="flex items-center gap-3 py-3">
+      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 shadow-lg shadow-purple-900/30">
+        <MicIcon />
+      </div>
+      <div className="min-w-0">
+        <h1 className="text-xl font-black tracking-wide text-white">Listaokê</h1>
+        <p className="truncate text-xs font-bold uppercase tracking-widest text-slate-400">{subtitle}</p>
+      </div>
+    </header>
+  );
+}
+
+function TextInput({ label, value, onChange, placeholder, autoFocus }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-slate-400">{label}</span>
+      <input
+        autoFocus={autoFocus}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-base font-semibold text-slate-100 outline-none transition focus:border-purple-500"
+      />
+    </label>
+  );
+}
+
+function PrimaryButton({ children, type = 'button', onClick, disabled }) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className="min-h-12 rounded-xl bg-purple-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-purple-950/30 transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SecondaryButton({ children, type = 'button', onClick }) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      className="min-h-12 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-purple-700 hover:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+function IconButton({ children, label, onClick, disabled, tone = 'default' }) {
+  const toneClass = tone === 'danger'
+    ? 'hover:border-red-700 hover:text-red-300'
+    : 'hover:border-purple-700 hover:text-purple-300';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-800 bg-slate-900 text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-25 ${toneClass}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function HomeScreen({ onCreate, onJoin }) {
+  const [roomCode, setRoomCode] = useState('');
+
+  const submitJoin = (event) => {
+    event.preventDefault();
+    onJoin(roomCode);
+  };
+
+  return (
+    <Shell>
+      <BrandHeader subtitle="salas compartilhadas de karaokê" />
+      <main className="flex flex-1 items-center justify-center py-8">
+        <section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl shadow-slate-950/50 sm:p-6">
+          <div className="mb-6">
+            <h2 className="text-3xl font-black tracking-tight text-white">Organize a fila da festa</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Crie uma sala local mockada ou entre com um código para testar o fluxo inicial.</p>
+          </div>
+
+          <div className="grid gap-3">
+            <PrimaryButton onClick={onCreate}>Criar sala</PrimaryButton>
+
+            <form onSubmit={submitJoin} className="grid gap-3 border-t border-slate-800 pt-4">
+              <TextInput
+                label="Entrar com código"
+                value={roomCode}
+                onChange={setRoomCode}
+                placeholder="Ex: ABC123"
+              />
+              <SecondaryButton type="submit">Continuar</SecondaryButton>
+            </form>
+          </div>
+        </section>
+      </main>
+    </Shell>
+  );
+}
+
+function CreateRoomScreen({ onBack, onCreateRoom }) {
+  const [roomName, setRoomName] = useState('');
+  const [userName, setUserName] = useState('');
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (!roomName.trim() || !userName.trim()) return;
+    onCreateRoom({ roomName, userName });
+  };
+
+  return (
+    <Shell>
+      <BrandHeader subtitle="criar sala" />
+      <main className="flex flex-1 items-center justify-center py-8">
+        <section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl shadow-slate-950/50 sm:p-6">
+          <button type="button" onClick={onBack} className="mb-5 flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white">
+            <ArrowLeftIcon /> Voltar
+          </button>
+          <h2 className="mb-5 text-2xl font-black text-white">Criar sala</h2>
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <TextInput label="Nome da sala" value={roomName} onChange={setRoomName} placeholder="Karaokê da galera" autoFocus />
+            <TextInput label="Seu nome" value={userName} onChange={setUserName} placeholder="Como vão te chamar" />
+            <PrimaryButton type="submit" disabled={!roomName.trim() || !userName.trim()}>Criar</PrimaryButton>
+          </form>
+        </section>
+      </main>
+    </Shell>
+  );
+}
+
+function JoinRoomScreen({ initialCode, onBack, onJoinRoom }) {
+  const [roomCode, setRoomCode] = useState(initialCode);
+  const [userName, setUserName] = useState('');
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (!roomCode.trim() || !userName.trim()) return;
+    onJoinRoom({ roomCode, userName });
+  };
+
+  return (
+    <Shell>
+      <BrandHeader subtitle="entrar na sala" />
+      <main className="flex flex-1 items-center justify-center py-8">
+        <section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl shadow-slate-950/50 sm:p-6">
+          <button type="button" onClick={onBack} className="mb-5 flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white">
+            <ArrowLeftIcon /> Voltar
+          </button>
+          <h2 className="mb-5 text-2xl font-black text-white">Entrar na sala</h2>
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <TextInput label="Código da sala" value={roomCode} onChange={(value) => setRoomCode(value.toUpperCase())} placeholder="Ex: ABC123" autoFocus />
+            <TextInput label="Seu nome" value={userName} onChange={setUserName} placeholder="Como vão te chamar" />
+            <PrimaryButton type="submit" disabled={!roomCode.trim() || !userName.trim()}>Entrar</PrimaryButton>
+          </form>
+        </section>
+      </main>
+    </Shell>
+  );
+}
+
+function RoomScreen({ session, onUpdateSession, onLeaveRoom }) {
   const [newSingerName, setNewSingerName] = useState('');
+  const [notice, setNotice] = useState('');
 
-  const [showNotification, setShowNotification] = useState(null);
+  const { room, me, members, currentSinger, queue, history } = session;
+  const isOwner = me.role === 'owner';
+  const isMyTurn = currentSinger?.memberId === me.id;
+  const myQueuedItem = queue.find((item) => item.memberId === me.id);
 
-  // Notificações flutuantes seguras dentro do painel
-  const triggerNotification = (message, type = 'success') => {
-    setShowNotification({ message, type });
-    setTimeout(() => {
-      setShowNotification(null);
-    }, 4000);
+  const updateRoom = (changes, message) => {
+    onUpdateSession((current) => ({
+      ...current,
+      ...changes,
+    }));
+    if (message) setNotice(message);
   };
 
-  // ADICIONAR NOVA PESSOA (Entra no fim da fila)
-  const handleAddSinger = (e) => {
-    e.preventDefault();
-    if (!newSingerName.trim()) return;
+  const addQueueItem = ({ name, memberId }) => {
+    const singerName = name.trim();
+    if (!singerName) return;
 
-    const newSinger = {
-      id: 'custom-' + Date.now(),
-      singer: newSingerName.trim(),
-      performancesCount: 0
-    };
+    updateRoom({
+      queue: [
+        ...queue,
+        {
+          id: `queue-${Date.now()}`,
+          memberId,
+          singer: singerName,
+          performancesCount: 0,
+        },
+      ],
+    }, `${singerName} entrou no fim da fila.`);
+  };
 
-    setQueue([...queue, newSinger]);
+  const handleOwnerAddSinger = (event) => {
+    event.preventDefault();
+    addQueueItem({ name: newSingerName, memberId: `manual-${Date.now()}` });
     setNewSingerName('');
-    triggerNotification(`➕ ${newSinger.singer} foi adicionado(a) ao fim da fila.`);
   };
 
-  // REMOVER PESSOA DA FILA DE ESPERA
+  const handleJoinQueue = () => {
+    if (isMyTurn || myQueuedItem) return;
+    addQueueItem({ name: me.name, memberId: me.id });
+  };
+
   const handleRemoveSinger = (id, name) => {
-    setQueue(queue.filter(item => item.id !== id));
-    triggerNotification(`❌ ${name} foi removido(a) da fila de espera.`);
+    updateRoom({ queue: queue.filter((item) => item.id !== id) }, `${name} saiu da fila.`);
   };
 
-  // Concluir apresentação: vai para o Histórico e AUTOMATICAMENTE regressa ao fim da fila
-  const handleFinishCurrent = () => {
-    if (!currentSinger) return;
+  const handleMove = (index, direction) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= queue.length) return;
+
+    const newQueue = [...queue];
+    [newQueue[index], newQueue[nextIndex]] = [newQueue[nextIndex], newQueue[index]];
+    updateRoom({ queue: newQueue });
+  };
+
+  const rotateCurrentToQueue = ({ addToHistory }) => {
+    if (!currentSinger || queue.length === 0) return;
 
     const now = new Date();
     const finishedAt = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    
-    setHistory(prev => [
-      {
-        id: 'h-' + Date.now(),
-        singer: currentSinger.singer,
-        finishedAt
-      },
-      ...prev
-    ]);
-
     const rotatedSinger = {
       ...currentSinger,
-      performancesCount: currentSinger.performancesCount + 1
+      performancesCount: currentSinger.performancesCount + (addToHistory ? 1 : 0),
     };
+    const nextQueue = [...queue, rotatedSinger];
+    const nextSinger = nextQueue[0];
+    const nextHistory = addToHistory
+      ? [{ id: `h-${Date.now()}`, singer: currentSinger.singer, finishedAt }, ...history]
+      : history;
 
-    const updatedQueue = [...queue, rotatedSinger];
-    const nextSinger = updatedQueue[0];
-
-    setCurrentSinger(nextSinger);
-    setQueue(updatedQueue.slice(1));
-
-    triggerNotification(`🎉 ${currentSinger.singer} concluiu! Foi para o fim da fila. Agora no palco: ${nextSinger.singer}`);
+    updateRoom({
+      currentSinger: nextSinger,
+      queue: nextQueue.slice(1),
+      history: nextHistory,
+    }, addToHistory ? `${currentSinger.singer} concluiu a apresentação.` : `${currentSinger.singer} passou a vez.`);
   };
 
-  // Passar Vez / Pular Turno: move o cantor para o fim da fila de espera sem registrar no histórico
-  const handleSkipCurrent = () => {
-    if (!currentSinger) return;
-
-    const updatedQueue = [...queue, currentSinger];
-    const nextSinger = updatedQueue[0];
-
-    setCurrentSinger(nextSinger);
-    setQueue(updatedQueue.slice(1));
-
-    triggerNotification(`⏭️ Turno de ${currentSinger.singer} adiado para o final da fila.`);
+  const handleCloseRoom = () => {
+    updateRoom({ room: { ...room, isClosed: true } }, 'Sala fechada localmente.');
   };
 
-  // REORDENAR: Mover cantor para CIMA na fila
-  const handleMoveUp = (index) => {
-    if (index === 0) return;
-    const newQueue = [...queue];
-    const temp = newQueue[index];
-    newQueue[index] = newQueue[index - 1];
-    newQueue[index - 1] = temp;
-    setQueue(newQueue);
+  const handleTransferOwner = () => {
+    const nextOwner = members.find((member) => member.id !== me.id);
+    if (!nextOwner) return;
+
+    updateRoom({
+      me: { ...me, role: 'guest' },
+      members: members.map((member) => {
+        if (member.id === me.id) return { ...member, role: 'guest' };
+        if (member.id === nextOwner.id) return { ...member, role: 'owner' };
+        return member;
+      }),
+    }, `Dono transferido para ${nextOwner.name}.`);
   };
 
-  // REORDENAR: Mover cantor para BAIXO na fila
-  const handleMoveDown = (index) => {
-    if (index === queue.length - 1) return;
-    const newQueue = [...queue];
-    const temp = newQueue[index];
-    newQueue[index] = newQueue[index + 1];
-    newQueue[index + 1] = temp;
-    setQueue(newQueue);
-  };
-
-  const totalWaitTime = queue.length * 4;
+  const guestCanActOnCurrent = !isOwner && isMyTurn;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
-      
-      {/* Notificação Flutuante */}
-      {showNotification && (
-        <div className="fixed top-4 right-4 z-50 animate-bounce">
-          <div className="px-5 py-3 rounded-xl shadow-2xl bg-purple-950/90 border border-purple-500 text-purple-200 flex items-center gap-3">
-            <span className="text-lg font-bold">🎯</span>
-            <p className="font-semibold text-sm">{showNotification.message}</p>
-          </div>
-        </div>
-      )}
+    <Shell>
+      <BrandHeader subtitle={room.isClosed ? 'sala fechada localmente' : 'sala mockada local'} />
 
-      {/* Cabeçalho */}
-      <header className="border-b border-purple-950 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40 px-4 py-4 md:px-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-tr from-purple-600 to-pink-500 rounded-xl shadow-lg">
-            <MicIcon />
-          </div>
-          <div>
-            <h1 className="text-xl md:text-2xl font-black tracking-wider bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent">
-              KARAOKÊ ROTATIVO
-            </h1>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Gerenciamento Total e Circular</p>
-          </div>
-        </div>
-
-        {/* Status Gerais */}
-        <div className="flex flex-wrap items-center justify-center gap-3 text-xs md:text-sm bg-slate-950/80 p-2 rounded-xl border border-slate-800">
-          <div className="px-3 py-1.5 rounded-lg bg-slate-900 flex items-center gap-2 border border-slate-800/60">
-            <UsersIcon />
-            <span>Fila: <strong className="text-pink-400">{queue.length} pessoas</strong></span>
-          </div>
-          <div className="px-3 py-1.5 rounded-lg bg-slate-900 flex items-center gap-2 border border-slate-800/60">
-            <ClockIcon />
-            <span>Rodada: <strong className="text-purple-400">~{totalWaitTime} min</strong></span>
-          </div>
-        </div>
-      </header>
-
-      {/* Grid Principal */}
-      <main className="flex-1 p-4 md:p-8 max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Painel do Cantor no Palco (Esquerda) */}
-        <div className="lg:col-span-5 flex flex-col gap-6">
-          
-          <section className="bg-gradient-to-b from-slate-900 to-slate-950 border border-purple-500/20 rounded-2xl p-6 relative overflow-hidden shadow-2xl">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl pointer-events-none"></div>
-            
-            <div className="mb-6">
-              <span className="px-3 py-1 rounded-full text-[10px] md:text-xs font-black tracking-widest bg-pink-500/10 text-pink-400 border border-pink-500/20 flex items-center gap-1.5 w-max">
-                <span className="w-2 h-2 rounded-full bg-pink-500 animate-ping"></span>
-                NO PALCO AGORA
+      <main className="grid flex-1 gap-5 py-4 lg:grid-cols-12 lg:gap-6">
+        <section className="lg:col-span-5">
+          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-b from-slate-900 to-slate-950 p-5 shadow-2xl shadow-slate-950/50">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-widest text-pink-400">Sala</p>
+                <h2 className="mt-1 break-words text-3xl font-black text-white">{room.name}</h2>
+                <p className="mt-2 font-mono text-sm font-bold text-purple-300">Código: {room.code}</p>
+              </div>
+              <span className="w-max rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-slate-300">
+                {isOwner ? 'Dono' : 'Convidado'}
               </span>
             </div>
 
-            {currentSinger ? (
-              <div className="flex flex-col h-full justify-between">
-                <div>
-                  <h3 className="text-4xl md:text-5xl font-black text-white tracking-tight break-words">
-                    {currentSinger.singer}
-                  </h3>
-                  
-                  <div className="flex items-center gap-2 mt-3 text-slate-400 text-xs font-semibold">
-                    <SparklesIcon />
-                    <span>Já cantou {currentSinger.performancesCount} vezes hoje</span>
-                  </div>
-                </div>
+            {notice && (
+              <div className="mb-5 rounded-xl border border-purple-500/30 bg-purple-950/40 px-4 py-3 text-sm font-semibold text-purple-100">
+                {notice}
+              </div>
+            )}
 
-                {/* Ações */}
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                  <button 
-                    onClick={handleFinishCurrent}
-                    className="py-3.5 px-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-600/20 text-xs md:text-sm"
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
+              <span className="flex w-max items-center gap-2 rounded-full border border-pink-500/20 bg-pink-500/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-pink-400">
+                <span className="h-2 w-2 rounded-full bg-pink-500" />
+                Cantando agora
+              </span>
+
+              {currentSinger ? (
+                <div className="mt-5">
+                  <h3 className="break-words text-4xl font-black text-white">{currentSinger.singer}</h3>
+                  <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-400">
+                    <SparklesIcon />
+                    Já cantou {currentSinger.performancesCount} vezes hoje
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-5 text-sm text-slate-500">Ninguém cantando agora.</p>
+              )}
+
+              {(isOwner || guestCanActOnCurrent) && currentSinger && (
+                <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => rotateCurrentToQueue({ addToHistory: true })}
+                      disabled={queue.length === 0}
+                      className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-3 text-sm font-black text-white transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <CheckIcon /> Concluir
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => rotateCurrentToQueue({ addToHistory: false })}
+                    disabled={queue.length === 0}
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-purple-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <CheckIcon /> Concluir & Fim
+                    Passar vez <SkipForwardIcon />
                   </button>
-                  <button 
-                    onClick={handleSkipCurrent}
-                    className="py-3.5 px-4 bg-slate-850 hover:bg-slate-800 text-slate-300 font-bold rounded-xl flex items-center justify-center gap-2 border border-slate-700 transition-colors text-xs md:text-sm"
+                </div>
+              )}
+            </div>
+
+            {isOwner ? (
+              <div className="mt-5 grid gap-3">
+                <form onSubmit={handleOwnerAddSinger} className="grid gap-3">
+                  <TextInput label="Adicionar pessoa" value={newSingerName} onChange={setNewSingerName} placeholder="Nome do convidado" />
+                  <PrimaryButton type="submit" disabled={!newSingerName.trim()}>Inserir na fila</PrimaryButton>
+                </form>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <SecondaryButton onClick={handleTransferOwner}>Transferir dono</SecondaryButton>
+                  <button
+                    type="button"
+                    onClick={handleCloseRoom}
+                    className="min-h-12 rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-200 transition hover:border-red-700"
                   >
-                    Passar Vez <SkipForwardIcon />
+                    Fechar sala
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="text-slate-500 text-sm">Ninguém cantando atualmente.</p>
+              <div className="mt-5 grid gap-3">
+                <PrimaryButton onClick={handleJoinQueue} disabled={Boolean(isMyTurn || myQueuedItem)}>Entrar na fila</PrimaryButton>
+                {myQueuedItem && (
+                  <SecondaryButton onClick={() => handleRemoveSinger(myQueuedItem.id, myQueuedItem.singer)}>Sair da minha vez</SecondaryButton>
+                )}
+              </div>
             )}
-          </section>
 
-          {/* ADICIONAR NOVA PESSOA */}
-          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-            <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2 uppercase tracking-wider">
-              <UserPlusIcon /> Incluir Pessoa na Festa
-            </h3>
-            <form onSubmit={handleAddSinger} className="flex gap-2">
-              <input 
-                type="text" 
-                value={newSingerName}
-                onChange={(e) => setNewSingerName(e.target.value)}
-                placeholder="Nome do convidado..."
-                className="flex-1 bg-slate-950 border border-slate-850 rounded-xl px-4 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-purple-500 text-sm font-semibold"
-              />
-              <button 
-                type="submit"
-                className="px-4 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-sm transition-colors"
-              >
-                Inserir
-              </button>
-            </form>
-          </section>
+            <button type="button" onClick={onLeaveRoom} className="mt-5 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-4 text-sm font-bold text-slate-300 transition hover:border-purple-700 hover:text-white">
+              <DoorIcon /> Sair da tela da sala
+            </button>
+          </div>
+        </section>
 
-        </div>
+        <section className="grid gap-5 lg:col-span-7">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-white">
+                <UsersIcon /> Fila
+              </h2>
+              <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-purple-300">{queue.length} pessoas</span>
+            </div>
 
-        {/* Listagem da Fila de Espera (Direita) */}
-        <div className="lg:col-span-7 flex flex-col gap-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-          
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-850">
-            <div className="flex-1 py-2.5 rounded-lg font-bold text-sm bg-purple-600 text-white shadow-md flex items-center justify-center gap-2">
-              <UsersIcon />
-              Fila de Espera Atual ({queue.length})
+            <div className="grid gap-2">
+              {queue.length === 0 ? (
+                <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">A fila está vazia.</p>
+              ) : queue.map((item, index) => {
+                const isMine = item.memberId === me.id;
+                const canManageItem = isOwner || isMine;
+
+                return (
+                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-800 bg-slate-900 font-mono text-xs font-bold text-purple-300">
+                        {index + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-bold text-white">{item.singer}</h3>
+                        <p className="text-xs text-slate-400">
+                          Cantou {item.performancesCount} vezes {isMine ? '- você' : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    {canManageItem && (
+                      <div className="flex items-center gap-1">
+                        {isOwner && (
+                          <>
+                            <IconButton label="Subir posição" onClick={() => handleMove(index, -1)} disabled={index === 0}>
+                              <ChevronUpIcon />
+                            </IconButton>
+                            <IconButton label="Descer posição" onClick={() => handleMove(index, 1)} disabled={index === queue.length - 1}>
+                              <ChevronDownIcon />
+                            </IconButton>
+                          </>
+                        )}
+                        <IconButton label="Remover da fila" onClick={() => handleRemoveSinger(item.id, item.singer)} tone="danger">
+                          <TrashIcon />
+                        </IconButton>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col justify-between">
-            {/* Lista Ordenada */}
-            <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
-              {queue.map((item, index) => (
-                <div 
-                  key={item.id}
-                  className="bg-slate-950/60 border border-slate-850 p-3 rounded-xl flex items-center justify-between gap-3 hover:border-purple-900/30 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-850 flex items-center justify-center font-mono font-bold text-xs text-purple-400 shrink-0">
-                      {index + 1}º
-                    </div>
-                    
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-white text-base truncate">{item.singer}</h4>
-                      <p className="text-[10px] text-slate-400">
-                        Vezes que cantou: <strong className="text-purple-400">{item.performancesCount}</strong>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Controles: Subir, Descer e Remover */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => handleMoveUp(index)}
-                      disabled={index === 0}
-                      className="p-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-purple-400 disabled:opacity-20 border border-slate-800"
-                      title="Subir posição"
-                    >
-                      <ChevronUpIcon />
-                    </button>
-                    <button
-                      onClick={() => handleMoveDown(index)}
-                      disabled={index === queue.length - 1}
-                      className="p-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-purple-400 disabled:opacity-20 border border-slate-800"
-                      title="Descer posição"
-                    >
-                      <ChevronDownIcon />
-                    </button>
-                    <button
-                      onClick={() => handleRemoveSinger(item.id, item.singer)}
-                      className="p-2 rounded-lg bg-slate-900 text-slate-500 hover:text-red-400 border border-slate-800 transition-colors"
-                      title="Remover da festa"
-                    >
-                      <TrashIcon />
-                    </button>
-                  </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
+            <h2 className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-white">
+              <HistoryIcon /> Histórico
+            </h2>
+            <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
+              {history.length === 0 ? (
+                <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">Nenhuma apresentação concluída.</p>
+              ) : history.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
+                  <span className="font-bold text-slate-200">{item.singer}</span>
+                  <span className="font-mono text-xs text-slate-500">{item.finishedAt}</span>
                 </div>
               ))}
             </div>
-
-            {/* Histórico */}
-            <div className="mt-6 pt-6 border-t border-slate-800">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <HistoryIcon /> Últimas Apresentações Concluídas
-              </h3>
-
-              <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
-                {history.map((item) => (
-                  <div 
-                    key={item.id}
-                    className="bg-slate-950/30 border border-slate-850 p-2.5 rounded-lg flex items-center justify-between gap-3 text-xs"
-                  >
-                    <span className="font-bold text-slate-300">{item.singer}</span>
-                    <span className="text-slate-500 font-mono">Cantou ({item.finishedAt})</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
           </div>
-
-        </div>
+        </section>
       </main>
-
-      <footer className="border-t border-slate-900 py-4 mt-8 text-center text-[10px] text-slate-500">
-        <p>Karaokê Rotativo - Adicionar, remover e reordenar liberados.</p>
-      </footer>
-    </div>
+    </Shell>
   );
+}
+
+export default function App() {
+  const [screen, setScreen] = useState('home');
+  const [pendingCode, setPendingCode] = useState('');
+  const [session, setSession] = useState(null);
+
+  const openJoin = (code = '') => {
+    setPendingCode(code.trim().toUpperCase());
+    setScreen('join');
+  };
+
+  const createRoom = ({ roomName, userName }) => {
+    setSession(createMockRoom({ roomName, userName, role: 'owner' }));
+    setScreen('room');
+  };
+
+  const joinRoom = ({ roomCode, userName }) => {
+    setSession(createMockRoom({
+      roomName: `Sala ${roomCode.trim().toUpperCase()}`,
+      userName,
+      role: 'guest',
+      code: roomCode,
+    }));
+    setScreen('room');
+  };
+
+  if (screen === 'create') {
+    return <CreateRoomScreen onBack={() => setScreen('home')} onCreateRoom={createRoom} />;
+  }
+
+  if (screen === 'join') {
+    return <JoinRoomScreen initialCode={pendingCode} onBack={() => setScreen('home')} onJoinRoom={joinRoom} />;
+  }
+
+  if (screen === 'room' && session) {
+    return (
+      <RoomScreen
+        session={session}
+        onUpdateSession={setSession}
+        onLeaveRoom={() => {
+          setSession(null);
+          setScreen('home');
+        }}
+      />
+    );
+  }
+
+  return <HomeScreen onCreate={() => setScreen('create')} onJoin={openJoin} />;
 }
