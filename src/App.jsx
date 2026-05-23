@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ensureAnonymousSession } from './services/authService';
 import { subscribeToRoomChanges } from './services/realtimeService';
-import { createRoom as createRoomOnSupabase, joinRoom as joinRoomOnSupabase, loadRoomSession } from './services/roomService';
+import {
+  createRoom as createRoomOnSupabase,
+  joinRoom as joinRoomOnSupabase,
+  loadRoomSession,
+  transferRoomOwnership,
+} from './services/roomService';
 import {
   addMemberToQueue,
   finishCurrentPerformance,
@@ -316,6 +321,8 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [selectedTransferMember, setSelectedTransferMember] = useState(null);
 
   const { room, me, members, queueItems, events } = session;
   const isOwner = me.role === 'owner';
@@ -328,6 +335,7 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
   ));
   const currentName = currentItem?.member?.name || 'Participante';
   const guestCanActOnCurrent = !isOwner && currentItem?.member_id === me.id;
+  const transferCandidates = members.filter((member) => member.id !== me.id);
 
   const runAction = async (action, successMessage) => {
     setActionLoading(true);
@@ -391,8 +399,26 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
     setNotice('Fechar sala ainda não foi conectado ao Supabase nesta etapa.');
   };
 
-  const handleTransferOwner = () => {
-    setNotice('Transferir dono ainda não foi conectado ao Supabase nesta etapa.');
+  const handleOpenTransfer = () => {
+    setActionError('');
+    setNotice('');
+    setSelectedTransferMember(null);
+    setIsTransferOpen(true);
+  };
+
+  const handleConfirmTransfer = () => {
+    if (!selectedTransferMember) return;
+
+    runAction(
+      () => transferRoomOwnership({
+        roomId: room.id,
+        newOwnerMemberId: selectedTransferMember.id,
+      }),
+      `Sala transferida para ${selectedTransferMember.name}. Você continua na sala como convidado.`
+    ).then(() => {
+      setIsTransferOpen(false);
+      setSelectedTransferMember(null);
+    });
   };
 
   return (
@@ -482,7 +508,7 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
 
             {isOwner ? (
               <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <SecondaryButton onClick={handleTransferOwner}>Transferir dono</SecondaryButton>
+                <SecondaryButton onClick={handleOpenTransfer}>Transferir sala</SecondaryButton>
                 <button
                   type="button"
                   onClick={handleCloseRoom}
@@ -496,6 +522,72 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
                 <PrimaryButton onClick={handleJoinQueue} disabled={actionLoading || Boolean(activeOwnItem)}>Entrar na fila</PrimaryButton>
                 {activeOwnItem && (
                   <SecondaryButton onClick={() => handleRemoveItem(activeOwnItem)} disabled={actionLoading}>Sair da minha vez</SecondaryButton>
+                )}
+              </div>
+            )}
+
+            {isOwner && isTransferOpen && (
+              <div className="mt-5 rounded-xl border border-purple-500/30 bg-slate-950/80 p-4">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-widest text-white">Transferir sala</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Escolha quem será o novo dono desta sala.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTransferOpen(false);
+                      setSelectedTransferMember(null);
+                    }}
+                    className="rounded-lg border border-slate-800 px-3 py-1 text-xs font-bold text-slate-300 transition hover:border-purple-700 hover:text-white"
+                  >
+                    Fechar
+                  </button>
+                </div>
+
+                {transferCandidates.length === 0 ? (
+                  <p className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-3 text-sm font-semibold text-slate-300">
+                    Não há outro membro para receber a sala.
+                  </p>
+                ) : (
+                  <div className="grid gap-3">
+                    <div className="grid gap-2">
+                      {transferCandidates.map((member) => {
+                        const isSelected = selectedTransferMember?.id === member.id;
+
+                        return (
+                          <button
+                            key={member.id}
+                            type="button"
+                            onClick={() => setSelectedTransferMember(member)}
+                            className={`min-h-11 rounded-lg border px-3 text-left text-sm font-bold transition ${
+                              isSelected
+                                ? 'border-purple-500 bg-purple-950/50 text-white'
+                                : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-purple-700'
+                            }`}
+                          >
+                            {member.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {selectedTransferMember && (
+                      <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+                        <p className="text-sm font-semibold leading-6 text-slate-200">
+                          Transferir a sala para {selectedTransferMember.name}? Você continuará na sala como convidado.
+                        </p>
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <PrimaryButton onClick={handleConfirmTransfer} disabled={actionLoading}>
+                            {actionLoading ? 'Transferindo...' : 'Confirmar'}
+                          </PrimaryButton>
+                          <SecondaryButton onClick={() => setSelectedTransferMember(null)} disabled={actionLoading}>
+                            Cancelar
+                          </SecondaryButton>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -586,6 +678,434 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
             </div>
           </div>
         </section>
+      </main>
+    </Shell>
+  );
+}
+
+function RoomScreenV2({ session, onReload, onLeaveRoom }) {
+  const [notice, setNotice] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [selectedTransferMember, setSelectedTransferMember] = useState(null);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
+  const { room, me, members, queueItems, events } = session;
+  const isOwner = me.role === 'owner';
+  const currentItem = queueItems.find((item) => item.status === 'on_stage') || null;
+  const waitingItems = queueItems
+    .filter((item) => item.status === 'waiting')
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const activeOwnItem = queueItems.find((item) => (
+    item.member_id === me.id && (item.status === 'waiting' || item.status === 'on_stage')
+  ));
+  const currentName = currentItem?.member?.name || 'Participante';
+  const currentIsMe = currentItem?.member_id === me.id;
+  const myWaitingIndex = waitingItems.findIndex((item) => item.member_id === me.id);
+  const myPosition = myWaitingIndex >= 0 ? myWaitingIndex + 1 : null;
+  const myStatus = currentIsMe ? 'cantando' : myPosition ? 'aguardando' : 'fora da fila';
+  const transferCandidates = members.filter((member) => member.id !== me.id);
+  const addableMembers = members.filter((member) => (
+    !queueItems.some((item) => item.member_id === member.id && (item.status === 'waiting' || item.status === 'on_stage'))
+  ));
+
+  const runAction = async (action, successMessage) => {
+    setActionLoading(true);
+    setActionError('');
+    setNotice('');
+
+    try {
+      await action();
+      if (successMessage) setNotice(successMessage);
+      await onReload();
+    } catch (error) {
+      setActionError(error.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleJoinQueue = (memberId = me.id, successName = 'Você') => {
+    runAction(
+      () => addMemberToQueue({ roomId: room.id, memberId }),
+      `${successName} entrou na fila.`
+    );
+  };
+
+  const handleRemoveItem = (item) => {
+    runAction(
+      () => removeQueueItem({ roomId: room.id, queueItem: item, actorMemberId: me.id, isOwner }),
+      `${item.member?.name || 'Participante'} saiu da fila.`
+    );
+  };
+
+  const handleSkipItem = (item) => {
+    runAction(
+      () => skipQueueItem({ roomId: room.id, queueItem: item, actorMemberId: me.id, isOwner }),
+      `${item.member?.name || 'Participante'} passou a vez.`
+    );
+  };
+
+  const handleFinishCurrent = () => {
+    if (!currentItem) return;
+    runAction(
+      () => finishCurrentPerformance({ roomId: room.id, queueItem: currentItem }),
+      `${currentName} concluiu a apresentação.`
+    );
+  };
+
+  const handleMove = (index, direction) => {
+    const nextIndex = index + direction;
+    if (!isOwner || nextIndex < 0 || nextIndex >= waitingItems.length) return;
+
+    const reordered = [...waitingItems];
+    [reordered[index], reordered[nextIndex]] = [reordered[nextIndex], reordered[index]];
+
+    runAction(
+      () => reorderWaitingQueue({ roomId: room.id, waitingItems: reordered, actorMemberId: me.id }),
+      'Fila reordenada.'
+    );
+  };
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(room.code);
+      setActionError('');
+      setNotice('Código copiado.');
+    } catch {
+      setNotice('');
+      setActionError('Não foi possível copiar o código automaticamente.');
+    }
+  };
+
+  const handleCloseRoom = () => {
+    setShowCloseConfirm(false);
+    setNotice('Fechar sala ainda não foi conectado ao Supabase nesta etapa.');
+  };
+
+  const handleOpenTransfer = () => {
+    setActionError('');
+    setNotice('');
+    setSelectedTransferMember(null);
+    setIsTransferOpen(true);
+  };
+
+  const handleConfirmTransfer = () => {
+    if (!selectedTransferMember) return;
+
+    runAction(
+      () => transferRoomOwnership({
+        roomId: room.id,
+        newOwnerMemberId: selectedTransferMember.id,
+      }),
+      `Sala transferida para ${selectedTransferMember.name}. Você continua na sala como convidado.`
+    ).then(() => {
+      setIsTransferOpen(false);
+      setSelectedTransferMember(null);
+    });
+  };
+
+  const eventText = (event) => {
+    const member = members.find((item) => item.id === event.member_id);
+    if (event.type === 'owner_transferred') return 'Sala transferida';
+    if (member) return `${member.name} ${EVENT_LABELS[event.type] || event.type}`;
+    return EVENT_LABELS[event.type] || event.type;
+  };
+
+  return (
+    <Shell>
+      <header className="sticky top-0 z-30 -mx-4 border-b border-slate-900 bg-slate-950/95 px-4 pb-3 pt-2 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-pink-400">{isOwner ? 'Dono' : 'Convidado'}</p>
+            <h1 className="truncate text-xl font-black text-white">{room.name}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-sm font-bold text-purple-300">{room.code}</span>
+              <button type="button" onClick={handleCopyCode} className="rounded-lg border border-slate-800 px-2.5 py-1 text-xs font-bold text-slate-300">
+                Copiar código
+              </button>
+            </div>
+          </div>
+          <button type="button" onClick={onLeaveRoom} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-800 bg-slate-900 text-slate-300" aria-label="Sair da sala">
+            <DoorIcon />
+          </button>
+        </div>
+      </header>
+
+      <main className="grid flex-1 gap-4 py-4 lg:grid-cols-[1fr_0.85fr] lg:gap-5">
+        <section className="grid gap-4">
+          {notice && (
+            <div className="rounded-xl border border-purple-500/30 bg-purple-950/40 px-4 py-3 text-sm font-semibold text-purple-100">
+              {notice}
+            </div>
+          )}
+          <ErrorBanner message={actionError} />
+
+          <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-b from-slate-900 to-slate-950 p-5 shadow-2xl shadow-slate-950/50">
+            <span className="flex w-max items-center gap-2 rounded-full border border-pink-500/20 bg-pink-500/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-pink-400">
+              <span className="h-2 w-2 rounded-full bg-pink-500" />
+              Cantando agora
+            </span>
+            {currentItem ? (
+              <div className="mt-4">
+                <h2 className="break-words text-4xl font-black text-white">{currentName}{currentIsMe ? ' (você)' : ''}</h2>
+                {!currentIsMe && myPosition && (
+                  <p className="mt-3 text-sm font-semibold text-slate-300">Você está em {myPosition}º na fila.</p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-slate-500">Ninguém cantando agora.</p>
+            )}
+            {currentItem && (isOwner || currentIsMe) && (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <PrimaryButton onClick={handleFinishCurrent} disabled={actionLoading}>
+                  <CheckIcon /> {currentIsMe ? 'Concluir minha vez' : 'Concluir apresentação'}
+                </PrimaryButton>
+                <SecondaryButton onClick={() => handleSkipItem(currentItem)} disabled={actionLoading}>
+                  Passar vez
+                </SecondaryButton>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
+            <h2 className="text-sm font-black uppercase tracking-widest text-white">Minha participação</h2>
+            <div className="mt-3 rounded-xl bg-slate-950/70 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-black text-white">{me.name}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-400">
+                    Status: <span className="text-purple-300">{myStatus}</span>{myPosition ? ` • ${myPosition}º na fila` : ''}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-slate-700 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {isOwner ? 'Dono' : 'Convidado'}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {!activeOwnItem && <PrimaryButton onClick={() => handleJoinQueue()} disabled={actionLoading}>Entrar na fila</PrimaryButton>}
+                {activeOwnItem?.status === 'waiting' && (
+                  <>
+                    <SecondaryButton onClick={() => handleRemoveItem(activeOwnItem)} disabled={actionLoading}>Sair da fila</SecondaryButton>
+                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading}>Passar vez</SecondaryButton>
+                  </>
+                )}
+                {activeOwnItem?.status === 'on_stage' && (
+                  <>
+                    <PrimaryButton onClick={handleFinishCurrent} disabled={actionLoading}>Concluir minha vez</PrimaryButton>
+                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading}>Passar vez</SecondaryButton>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-white">
+                <UsersIcon /> Fila
+              </h2>
+              <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-purple-300">{waitingItems.length} aguardando</span>
+            </div>
+
+            <div className="grid gap-2">
+              {currentItem && (
+                <div className="rounded-xl border border-pink-500/30 bg-pink-950/20 p-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-pink-300">No palco</p>
+                  <p className="mt-1 font-bold text-white">{currentName}{currentIsMe ? ' (você)' : ''}</p>
+                </div>
+              )}
+              {waitingItems.length === 0 ? (
+                <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">A fila está vazia.</p>
+              ) : waitingItems.map((item, index) => {
+                const isMine = item.member_id === me.id;
+                const canManageItem = isOwner || isMine;
+                const itemName = item.member?.name || 'Participante';
+
+                return (
+                  <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${isMine ? 'border-purple-500/50 bg-purple-950/25' : 'border-slate-800 bg-slate-950/70'}`}>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-800 bg-slate-900 font-mono text-xs font-bold text-purple-300">
+                        {index + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-bold text-white">{itemName}{isMine ? ' (você)' : ''}</h3>
+                        <p className="text-xs text-slate-400">Aguardando</p>
+                      </div>
+                    </div>
+                    {canManageItem && (
+                      <div className="flex items-center gap-1">
+                        {isOwner && (
+                          <>
+                            <IconButton label="Subir posição" onClick={() => handleMove(index, -1)} disabled={actionLoading || index === 0}>
+                              <ChevronUpIcon />
+                            </IconButton>
+                            <IconButton label="Descer posição" onClick={() => handleMove(index, 1)} disabled={actionLoading || index === waitingItems.length - 1}>
+                              <ChevronDownIcon />
+                            </IconButton>
+                          </>
+                        )}
+                        <IconButton label="Passar vez" onClick={() => handleSkipItem(item)} disabled={actionLoading}>
+                          <SkipForwardIcon />
+                        </IconButton>
+                        <IconButton label="Remover da fila" onClick={() => handleRemoveItem(item)} disabled={actionLoading} tone="danger">
+                          <TrashIcon />
+                        </IconButton>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <aside className="grid content-start gap-4">
+          {isOwner && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
+              <h2 className="text-sm font-black uppercase tracking-widest text-white">Administração da sala</h2>
+
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                  <p className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">Adicionar pessoa</p>
+                  {addableMembers.length === 0 ? (
+                    <p className="text-sm text-slate-500">Todos os membros ativos já estão na fila ou cantando.</p>
+                  ) : addableMembers.map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => handleJoinQueue(member.id, member.name)}
+                      disabled={actionLoading}
+                      className="mb-2 min-h-10 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 text-left text-sm font-bold text-slate-200 transition hover:border-purple-700"
+                    >
+                      {member.name}
+                    </button>
+                  ))}
+                </div>
+
+                <SecondaryButton onClick={handleOpenTransfer}>Transferir sala</SecondaryButton>
+                {!showCloseConfirm ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCloseConfirm(true)}
+                    className="min-h-11 rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-2 text-sm font-bold text-red-200 transition hover:border-red-700"
+                  >
+                    Fechar sala
+                  </button>
+                ) : (
+                  <div className="rounded-xl border border-red-900/60 bg-red-950/30 p-3">
+                    <p className="text-sm font-semibold text-red-100">Tem certeza que deseja fechar a sala?</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={handleCloseRoom} className="min-h-10 rounded-lg bg-red-700 px-3 text-sm font-black text-white">Confirmar</button>
+                      <SecondaryButton onClick={() => setShowCloseConfirm(false)}>Cancelar</SecondaryButton>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isOwner && isTransferOpen && (
+            <div className="rounded-2xl border border-purple-500/30 bg-slate-900 p-4 shadow-xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-white">Transferir sala</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">Escolha quem será o novo dono.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsTransferOpen(false);
+                    setSelectedTransferMember(null);
+                  }}
+                  className="rounded-lg border border-slate-800 px-3 py-1 text-xs font-bold text-slate-300"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              {transferCandidates.length === 0 ? (
+                <p className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3 text-sm font-semibold text-slate-300">
+                  Não há outro membro para receber a sala.
+                </p>
+              ) : (
+                <div className="grid gap-3">
+                  {transferCandidates.map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => setSelectedTransferMember(member)}
+                      className={`min-h-11 rounded-lg border px-3 text-left text-sm font-bold transition ${
+                        selectedTransferMember?.id === member.id
+                          ? 'border-purple-500 bg-purple-950/50 text-white'
+                          : 'border-slate-800 bg-slate-950 text-slate-300 hover:border-purple-700'
+                      }`}
+                    >
+                      {member.name}
+                    </button>
+                  ))}
+
+                  {selectedTransferMember && (
+                    <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                      <p className="text-sm font-semibold leading-6 text-slate-200">
+                        Transferir a sala para {selectedTransferMember.name}? Você continuará na sala como convidado.
+                      </p>
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <PrimaryButton onClick={handleConfirmTransfer} disabled={actionLoading}>
+                          {actionLoading ? 'Transferindo...' : 'Confirmar'}
+                        </PrimaryButton>
+                        <SecondaryButton onClick={() => setSelectedTransferMember(null)} disabled={actionLoading}>
+                          Cancelar
+                        </SecondaryButton>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-white">
+              <UsersIcon /> Membros
+            </h2>
+            <div className="grid gap-1.5">
+              {members.map((member) => (
+                <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-950/70 px-3 py-2 text-sm">
+                  <span className="min-w-0 truncate font-bold text-slate-200">
+                    {member.name}{member.user_id === me.user_id ? ' (você)' : ''}
+                  </span>
+                  <span className="shrink-0 rounded-full border border-slate-700 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    {member.role === 'owner' ? 'Dono' : 'Convidado'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-white">
+              <HistoryIcon /> Histórico
+            </h2>
+            <div className="grid max-h-56 gap-1.5 overflow-y-auto pr-1">
+              {events.length === 0 ? (
+                <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-500">Nenhum evento registrado.</p>
+              ) : events.map((event) => {
+                const time = event.created_at
+                  ? new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                  : '';
+
+                return (
+                  <div key={event.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-950/70 px-3 py-2 text-xs">
+                    <span className="font-semibold text-slate-300">{eventText(event)}</span>
+                    <span className="font-mono text-slate-600">{time}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
       </main>
     </Shell>
   );
@@ -727,7 +1247,7 @@ export default function App() {
 
   if (screen === 'room' && session) {
     return (
-      <RoomScreen
+      <RoomScreenV2
         session={session}
         onReload={reloadSession}
         onLeaveRoom={() => {

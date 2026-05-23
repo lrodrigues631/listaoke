@@ -75,6 +75,17 @@ export async function loadRoomSession({ roomId, user, promoteMissingStage = true
   return buildRoomSession({ room, user, promoteMissingStage });
 }
 
+export async function transferRoomOwnership({ roomId, newOwnerMemberId }) {
+  const { error } = await supabase.rpc('transfer_room_ownership', {
+    p_room_id: roomId,
+    p_new_owner_member_id: newOwnerMemberId,
+  });
+
+  if (error) {
+    throw new Error(`Não foi possível transferir a sala: ${error.message}`);
+  }
+}
+
 export async function createRoom({ name, userName, user }) {
   const { data: code, error: codeError } = await supabase.rpc('generate_room_code');
 
