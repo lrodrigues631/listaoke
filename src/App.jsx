@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ensureAnonymousSession } from './services/authService';
 import { subscribeToRoomChanges } from './services/realtimeService';
 import {
@@ -26,6 +26,15 @@ const EVENT_LABELS = {
   room_closed: 'Sala encerrada',
   room_created: 'criou a sala',
 };
+
+function buildInviteLink(code) {
+  return `${window.location.origin}/?room=${code}`;
+}
+
+function getInitialRoomCode() {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('room')?.trim().toUpperCase() || '';
+}
 
 const MicIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -319,7 +328,7 @@ function JoinRoomScreen({ initialCode, onBack, onJoinRoom, isBusy, error }) {
   );
 }
 
-function RoomScreen({ session, onReload, onLeaveRoom }) {
+export function RoomScreen({ session, onReload, onLeaveRoom }) {
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
@@ -798,6 +807,17 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
     }
   };
 
+  const handleCopyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(buildInviteLink(room.code));
+      setActionError('');
+      setNotice('Convite copiado!');
+    } catch {
+      setNotice('');
+      setActionError('Não foi possível copiar o convite automaticamente.');
+    }
+  };
+
   const handleCloseRoom = () => {
     runAction(
       () => closeRoom({ roomId: room.id, userId: me.user_id }),
@@ -847,6 +867,9 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
               <span className="font-mono text-sm font-bold text-purple-300">{room.code}</span>
               <button type="button" onClick={handleCopyCode} className="rounded-lg border border-slate-800 px-2.5 py-1 text-xs font-bold text-slate-300">
                 Copiar código
+              </button>
+              <button type="button" onClick={handleCopyInvite} className="rounded-lg border border-purple-800/70 bg-purple-950/40 px-2.5 py-1 text-xs font-bold text-purple-100">
+                Copiar convite
               </button>
             </div>
           </div>
@@ -1144,8 +1167,9 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState('home');
-  const [pendingCode, setPendingCode] = useState('');
+  const initialRoomCode = getInitialRoomCode();
+  const [screen, setScreen] = useState(initialRoomCode ? 'join' : 'home');
+  const [pendingCode, setPendingCode] = useState(initialRoomCode);
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -1176,7 +1200,7 @@ export default function App() {
 
     const nextSession = await loadRoomSession({ roomId: session.room.id, user });
     setSession(nextSession);
-  }, [session?.room?.id, user]);
+  }, [session, user]);
 
   useEffect(() => {
     if (!session?.room?.id || !user) return undefined;
