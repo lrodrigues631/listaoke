@@ -23,7 +23,7 @@ export async function listQueueItems(roomId) {
     .order('sort_order', { ascending: true });
 
   if (error) {
-    throw new Error(`Não foi possível carregar a fila: ${error.message}`);
+    throw new Error('Não consegui atualizar a fila agora.');
   }
 
   return data || [];
@@ -35,7 +35,7 @@ export async function addMemberToQueue({ roomId, memberId }) {
   const alreadyActive = activeItems.some((item) => item.member_id === memberId);
 
   if (alreadyActive) {
-    throw new Error('Você já está na fila ou cantando agora.');
+    throw new Error('Você já está na fila ou no palco.');
   }
 
   const hasOnStage = activeItems.some((item) => item.status === 'on_stage');
@@ -51,7 +51,7 @@ export async function addMemberToQueue({ roomId, memberId }) {
     });
 
   if (error) {
-    throw new Error(`Não foi possível entrar na fila: ${error.message}`);
+    throw new Error('Não consegui te colocar na fila agora.');
   }
 
   await createRoomEvent({ roomId, memberId, type: 'member_added_to_queue' });
@@ -71,7 +71,7 @@ export async function promoteNextWaiting(roomId) {
     .eq('id', nextWaiting.id);
 
   if (error) {
-    throw new Error(`Não foi possível promover o próximo participante: ${error.message}`);
+    throw new Error('Não consegui chamar a próxima pessoa da fila.');
   }
 
   return nextWaiting.id;
@@ -89,7 +89,7 @@ export async function removeQueueItem({ roomId, queueItem, actorMemberId, isOwne
     .eq('id', queueItem.id);
 
   if (error) {
-    throw new Error(`Não foi possível remover da fila: ${error.message}`);
+    throw new Error('Não consegui remover essa pessoa da fila agora.');
   }
 
   await createRoomEvent({
@@ -120,7 +120,7 @@ export async function skipQueueItem({ roomId, queueItem, actorMemberId, isOwner 
     .eq('id', queueItem.id);
 
   if (error) {
-    throw new Error(`Não foi possível passar a vez: ${error.message}`);
+    throw new Error('Não consegui passar essa vez agora.');
   }
 
   await createRoomEvent({ roomId, memberId: queueItem.member_id, type: 'member_skipped_turn' });
@@ -140,7 +140,7 @@ export async function finishCurrentPerformance({ roomId, queueItem }) {
     .eq('id', queueItem.id);
 
   if (finishError) {
-    throw new Error(`Não foi possível concluir a apresentação: ${finishError.message}`);
+    throw new Error('Não consegui concluir essa apresentação agora.');
   }
 
   await createRoomEvent({ roomId, memberId: queueItem.member_id, type: 'performance_finished' });
@@ -158,7 +158,7 @@ export async function finishCurrentPerformance({ roomId, queueItem }) {
     });
 
   if (requeueError) {
-    throw new Error(`Não foi possível recolocar o participante na fila: ${requeueError.message}`);
+    throw new Error('A apresentação foi concluída, mas não consegui recolocar a pessoa no fim da fila.');
   }
 
   if (!shouldReturnOnStage) {
@@ -178,7 +178,7 @@ export async function reorderWaitingQueue({ roomId, waitingItems, actorMemberId 
   const failed = results.find((result) => result.error);
 
   if (failed) {
-    throw new Error(`Não foi possível reordenar a fila: ${failed.error.message}`);
+    throw new Error('Não consegui ajustar a ordem da fila agora.');
   }
 
   await createRoomEvent({ roomId, memberId: actorMemberId, type: 'queue_reordered' });

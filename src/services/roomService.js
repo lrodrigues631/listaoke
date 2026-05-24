@@ -14,7 +14,7 @@ async function getRoom(roomId) {
     .single();
 
   if (error) {
-    throw new Error(`Não foi possível carregar a sala: ${error.message}`);
+    throw new Error('Não consegui carregar essa sala agora. Tenta de novo em alguns segundos.');
   }
 
   return data;
@@ -28,7 +28,7 @@ async function getRoomMembers(roomId) {
     .eq('status', 'active');
 
   if (error) {
-    throw new Error(`Não foi possível carregar os membros da sala: ${error.message}`);
+    throw new Error('Não consegui atualizar a lista de pessoas da sala agora.');
   }
 
   return data || [];
@@ -46,7 +46,7 @@ async function buildRoomSession({ room, user, promoteMissingStage = false }) {
   const me = members.find((member) => member.user_id === user.id);
 
   if (!me) {
-    throw new Error('Sua participação nesta sala não foi encontrada.');
+    throw new Error('Não encontrei sua participação nessa sala. Tente entrar de novo pelo código.');
   }
 
   let queueItems = await listQueueItems(room.id);
@@ -82,7 +82,7 @@ export async function transferRoomOwnership({ roomId, newOwnerMemberId }) {
   });
 
   if (error) {
-    throw new Error(`Não foi possível transferir a sala: ${error.message}`);
+    throw new Error('Não consegui transferir a sala. Confere se você ainda é o dono e tenta de novo.');
   }
 }
 
@@ -97,7 +97,7 @@ export async function closeRoom({ roomId, userId }) {
     .eq('id', roomId);
 
   if (error) {
-    throw new Error(`Não foi possível fechar a sala: ${error.message}`);
+    throw new Error('Não consegui fechar a sala agora. Tenta de novo em alguns segundos.');
   }
 
   await createRoomEvent({ roomId, type: 'room_closed' });
@@ -107,7 +107,7 @@ export async function createRoom({ name, userName, user }) {
   const { data: code, error: codeError } = await supabase.rpc('generate_room_code');
 
   if (codeError) {
-    throw new Error(`Não foi possível gerar o código da sala: ${codeError.message}`);
+    throw new Error('Não consegui gerar o código da sala agora. Tenta de novo em alguns segundos.');
   }
 
   const { data: room, error: roomError } = await supabase
@@ -122,7 +122,7 @@ export async function createRoom({ name, userName, user }) {
     .single();
 
   if (roomError) {
-    throw new Error(`Não foi possível criar a sala: ${roomError.message}`);
+    throw new Error('Não consegui criar a sala agora. Tenta de novo em alguns segundos.');
   }
 
   const { data: member, error: memberError } = await supabase
@@ -138,7 +138,7 @@ export async function createRoom({ name, userName, user }) {
     .single();
 
   if (memberError) {
-    throw new Error(`A sala foi criada, mas não foi possível adicionar você como dono: ${memberError.message}`);
+    throw new Error('A sala nasceu, mas não consegui colocar você como dono. Tenta criar outra sala.');
   }
 
   const { error: queueError } = await supabase
@@ -151,7 +151,7 @@ export async function createRoom({ name, userName, user }) {
     });
 
   if (queueError) {
-    throw new Error(`A sala foi criada, mas não foi possível iniciar a fila: ${queueError.message}`);
+    throw new Error('A sala nasceu, mas não consegui iniciar a fila. Tenta criar outra sala.');
   }
 
   await createRoomEvent({ roomId: room.id, memberId: member.id, type: 'room_created' });
@@ -169,15 +169,15 @@ export async function joinRoom({ code, userName, user }) {
     .maybeSingle();
 
   if (roomError) {
-    throw new Error(`Não foi possível buscar a sala: ${roomError.message}`);
+    throw new Error('Não consegui procurar essa sala agora. Tenta de novo em alguns segundos.');
   }
 
   if (!room) {
-    throw new Error('Sala não encontrada. Confira o código e tente novamente.');
+    throw new Error('Não encontrei essa sala. Confere o código e tenta de novo.');
   }
 
   if (room.status === 'closed') {
-    throw new Error('Esta sala está fechada e não aceita novos participantes.');
+    throw new Error('Essa sala já foi encerrada. O karaokê dessa turma acabou por hoje.');
   }
 
   const { data: existingMember, error: memberLookupError } = await supabase
@@ -188,7 +188,7 @@ export async function joinRoom({ code, userName, user }) {
     .maybeSingle();
 
   if (memberLookupError) {
-    throw new Error(`Não foi possível verificar sua participação na sala: ${memberLookupError.message}`);
+    throw new Error('Não consegui conferir sua entrada nessa sala agora.');
   }
 
   if (existingMember) {
@@ -201,7 +201,7 @@ export async function joinRoom({ code, userName, user }) {
       .eq('id', existingMember.id);
 
     if (updateError) {
-      throw new Error(`Não foi possível reativar sua entrada na sala: ${updateError.message}`);
+      throw new Error('Não consegui reativar sua entrada na sala. Tenta de novo.');
     }
   } else {
     const { error: insertError } = await supabase
@@ -215,7 +215,7 @@ export async function joinRoom({ code, userName, user }) {
       });
 
     if (insertError) {
-      throw new Error(`Não foi possível entrar na sala: ${insertError.message}`);
+      throw new Error('Não consegui te colocar na sala agora. Tenta de novo em alguns segundos.');
     }
   }
 

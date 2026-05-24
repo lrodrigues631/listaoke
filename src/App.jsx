@@ -16,15 +16,38 @@ import {
   skipQueueItem,
 } from './services/queueService';
 
+const MESSAGES = {
+  createRoomNameRequired: 'Dá um nome para a sala antes de começar o show.',
+  userNameRequired: 'Coloca seu nome para a galera saber quem está na fila.',
+  roomCodeRequired: 'Coloca o código da sala para eu saber onde é o karaokê.',
+  roomCreated: 'Sala criada. Agora é só chamar o povo.',
+  joinedRoom: 'Você entrou na sala. Pode aquecer a voz.',
+  inviteCopied: 'Convite copiado. Agora manda no grupo.',
+  inviteCopyFailed: 'Não consegui copiar o convite. O navegador resolveu cantar fora do tom.',
+  codeCopied: 'Código copiado.',
+  codeCopyFailed: 'Não consegui copiar o código automaticamente.',
+  queueJoined: 'Você entrou na fila.',
+  queueLeft: 'saiu da fila.',
+  skippedTurn: 'passou a vez.',
+  finishedPerformance: 'concluiu a apresentação.',
+  queueReordered: 'Ordem da fila ajustada.',
+  roomClosed: 'A sala foi encerrada.',
+  closedRoomAction: 'Sala encerrada. Ninguém mexe mais nessa fila.',
+  transferSuccess: (name) => `Sala transferida. Agora ${name} segura o microfone da organização.`,
+  transferConfirm: (name) => `Transferir a sala para ${name}? Você continua aqui, só passa o controle.`,
+  closeConfirm: 'Tem certeza? Depois de fechar, ninguém mexe mais nessa fila.',
+};
+
 const EVENT_LABELS = {
-  member_added_to_queue: 'entrou na fila',
-  member_left_queue: 'saiu da fila',
-  member_removed: 'foi removido da fila',
-  member_skipped_turn: 'passou a vez',
-  performance_finished: 'concluiu a apresentação',
-  queue_reordered: 'reordenou a fila',
-  room_closed: 'Sala encerrada',
-  room_created: 'criou a sala',
+  member_added_to_queue: 'Alguém entrou na fila.',
+  member_left_queue: 'Alguém saiu da fila.',
+  member_removed: 'Alguém foi removido da fila.',
+  member_skipped_turn: 'Alguém passou a vez.',
+  performance_finished: 'Um participante concluiu a apresentação.',
+  queue_reordered: 'A ordem da fila foi ajustada.',
+  room_closed: 'A sala foi encerrada.',
+  room_created: 'A sala foi criada.',
+  owner_transferred: 'A sala foi transferida.',
 };
 
 function buildInviteLink(code) {
@@ -253,7 +276,7 @@ function HomeScreen({ onCreate, onJoin }) {
                 onChange={setRoomCode}
                 placeholder="Ex: ABC123"
               />
-              <SecondaryButton type="submit">Continuar</SecondaryButton>
+              <SecondaryButton type="submit">Entrar na sala</SecondaryButton>
             </form>
           </div>
         </section>
@@ -265,10 +288,19 @@ function HomeScreen({ onCreate, onJoin }) {
 function CreateRoomScreen({ onBack, onCreateRoom, isBusy, error }) {
   const [roomName, setRoomName] = useState('');
   const [userName, setUserName] = useState('');
+  const [formError, setFormError] = useState('');
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!roomName.trim() || !userName.trim()) return;
+    if (!roomName.trim()) {
+      setFormError(MESSAGES.createRoomNameRequired);
+      return;
+    }
+    if (!userName.trim()) {
+      setFormError(MESSAGES.userNameRequired);
+      return;
+    }
+    setFormError('');
     onCreateRoom({ roomName, userName });
   };
 
@@ -282,11 +314,11 @@ function CreateRoomScreen({ onBack, onCreateRoom, isBusy, error }) {
           </button>
           <h2 className="mb-5 text-2xl font-black text-white">Criar sala</h2>
           <form onSubmit={handleSubmit} className="grid gap-4">
-            <ErrorBanner message={error} />
+            <ErrorBanner message={formError || error} />
             <TextInput label="Nome da sala" value={roomName} onChange={setRoomName} placeholder="Karaokê da galera" autoFocus />
             <TextInput label="Seu nome" value={userName} onChange={setUserName} placeholder="Como vão te chamar" />
-            <PrimaryButton type="submit" disabled={isBusy || !roomName.trim() || !userName.trim()}>
-              {isBusy ? 'Criando...' : 'Criar'}
+            <PrimaryButton type="submit" disabled={isBusy}>
+              {isBusy ? 'Criando...' : 'Criar sala'}
             </PrimaryButton>
           </form>
         </section>
@@ -298,10 +330,19 @@ function CreateRoomScreen({ onBack, onCreateRoom, isBusy, error }) {
 function JoinRoomScreen({ initialCode, onBack, onJoinRoom, isBusy, error }) {
   const [roomCode, setRoomCode] = useState(initialCode);
   const [userName, setUserName] = useState('');
+  const [formError, setFormError] = useState('');
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!roomCode.trim() || !userName.trim()) return;
+    if (!roomCode.trim()) {
+      setFormError(MESSAGES.roomCodeRequired);
+      return;
+    }
+    if (!userName.trim()) {
+      setFormError('Coloca seu nome antes de entrar, artista misterioso.');
+      return;
+    }
+    setFormError('');
     onJoinRoom({ roomCode, userName });
   };
 
@@ -317,9 +358,9 @@ function JoinRoomScreen({ initialCode, onBack, onJoinRoom, isBusy, error }) {
           <form onSubmit={handleSubmit} className="grid gap-4">
             <TextInput label="Código da sala" value={roomCode} onChange={(value) => setRoomCode(value.toUpperCase())} placeholder="Ex: ABC123" autoFocus />
             <TextInput label="Seu nome" value={userName} onChange={setUserName} placeholder="Como vão te chamar" />
-            <ErrorBanner message={error} />
-            <PrimaryButton type="submit" disabled={isBusy || !roomCode.trim() || !userName.trim()}>
-              {isBusy ? 'Entrando...' : 'Entrar'}
+            <ErrorBanner message={formError || error} />
+            <PrimaryButton type="submit" disabled={isBusy}>
+              {isBusy ? 'Entrando...' : 'Entrar na sala'}
             </PrimaryButton>
           </form>
         </section>
@@ -352,7 +393,7 @@ export function RoomScreen({ session, onReload, onLeaveRoom }) {
   const runAction = async (action, successMessage) => {
     if (isClosed) {
       setNotice('');
-      setActionError('Sala encerrada. Não é possível alterar a fila.');
+      setActionError(MESSAGES.closedRoomAction);
       return;
     }
 
@@ -365,7 +406,7 @@ export function RoomScreen({ session, onReload, onLeaveRoom }) {
       if (successMessage) setNotice(successMessage);
       await onReload();
     } catch (error) {
-      setActionError(error.message);
+      setActionError(error.message || 'Algo deu errado. Tenta de novo em alguns segundos.');
     } finally {
       setActionLoading(false);
     }
@@ -704,8 +745,8 @@ export function RoomScreen({ session, onReload, onLeaveRoom }) {
   );
 }
 
-function RoomScreenV2({ session, onReload, onLeaveRoom }) {
-  const [notice, setNotice] = useState('');
+function RoomScreenV2({ session, initialNotice, onReload, onLeaveRoom }) {
+  const [notice, setNotice] = useState(initialNotice || '');
   const [actionError, setActionError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
@@ -726,7 +767,13 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
   const currentIsMe = currentItem?.member_id === me.id;
   const myWaitingIndex = waitingItems.findIndex((item) => item.member_id === me.id);
   const myPosition = myWaitingIndex >= 0 ? myWaitingIndex + 1 : null;
-  const myStatus = currentIsMe ? 'cantando' : myPosition ? 'aguardando' : 'fora da fila';
+  const myStatus = currentIsMe
+    ? 'Você está no palco. Manda ver.'
+    : myPosition === 1
+      ? 'Você é o próximo. Vai aquecendo a voz.'
+      : myPosition
+        ? 'Você está na fila. Sua hora vai chegar.'
+        : 'Você ainda está fora da fila.';
   const transferCandidates = members.filter((member) => member.id !== me.id);
   const addableMembers = members.filter((member) => (
     !queueItems.some((item) => item.member_id === member.id && (item.status === 'waiting' || item.status === 'on_stage'))
@@ -735,7 +782,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
   const runAction = async (action, successMessage) => {
     if (isClosed) {
       setNotice('');
-      setActionError('Sala encerrada. Não é possível alterar a fila.');
+      setActionError(MESSAGES.closedRoomAction);
       return;
     }
 
@@ -748,7 +795,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
       if (successMessage) setNotice(successMessage);
       await onReload();
     } catch (error) {
-      setActionError(error.message);
+      setActionError(error.message || 'Algo deu errado. Tenta de novo em alguns segundos.');
     } finally {
       setActionLoading(false);
     }
@@ -764,14 +811,14 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
   const handleRemoveItem = (item) => {
     runAction(
       () => removeQueueItem({ roomId: room.id, queueItem: item, actorMemberId: me.id, isOwner }),
-      `${item.member?.name || 'Participante'} saiu da fila.`
+      `${item.member?.name || 'Participante'} ${MESSAGES.queueLeft}`
     );
   };
 
   const handleSkipItem = (item) => {
     runAction(
       () => skipQueueItem({ roomId: room.id, queueItem: item, actorMemberId: me.id, isOwner }),
-      `${item.member?.name || 'Participante'} passou a vez.`
+      `${item.member?.name || 'Participante'} ${MESSAGES.skippedTurn}`
     );
   };
 
@@ -779,7 +826,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
     if (!currentItem) return;
     runAction(
       () => finishCurrentPerformance({ roomId: room.id, queueItem: currentItem }),
-      `${currentName} concluiu a apresentação.`
+      `${currentName} ${MESSAGES.finishedPerformance}`
     );
   };
 
@@ -792,7 +839,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
 
     runAction(
       () => reorderWaitingQueue({ roomId: room.id, waitingItems: reordered, actorMemberId: me.id }),
-      'Fila reordenada.'
+      MESSAGES.queueReordered
     );
   };
 
@@ -800,10 +847,10 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
     try {
       await navigator.clipboard.writeText(room.code);
       setActionError('');
-      setNotice('Código copiado.');
+      setNotice(MESSAGES.codeCopied);
     } catch {
       setNotice('');
-      setActionError('Não foi possível copiar o código automaticamente.');
+      setActionError(MESSAGES.codeCopyFailed);
     }
   };
 
@@ -811,17 +858,17 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
     try {
       await navigator.clipboard.writeText(buildInviteLink(room.code));
       setActionError('');
-      setNotice('Convite copiado!');
+      setNotice(MESSAGES.inviteCopied);
     } catch {
       setNotice('');
-      setActionError('Não foi possível copiar o convite automaticamente.');
+      setActionError(MESSAGES.inviteCopyFailed);
     }
   };
 
   const handleCloseRoom = () => {
     runAction(
       () => closeRoom({ roomId: room.id, userId: me.user_id }),
-      'Sala encerrada.'
+      MESSAGES.roomClosed
     ).then(() => {
       setShowCloseConfirm(false);
     });
@@ -842,7 +889,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
         roomId: room.id,
         newOwnerMemberId: selectedTransferMember.id,
       }),
-      `Sala transferida para ${selectedTransferMember.name}. Você continua na sala como convidado.`
+      MESSAGES.transferSuccess(selectedTransferMember.name)
     ).then(() => {
       setIsTransferOpen(false);
       setSelectedTransferMember(null);
@@ -851,8 +898,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
 
   const eventText = (event) => {
     const member = members.find((item) => item.id === event.member_id);
-    if (event.type === 'owner_transferred') return 'Sala transferida';
-    if (member) return `${member.name} ${EVENT_LABELS[event.type] || event.type}`;
+    if (member) return `${member.name} ${EVENT_LABELS[event.type]?.replace(/^Alguém /, '').replace(/^Um participante /, '') || event.type}`;
     return EVENT_LABELS[event.type] || event.type;
   };
 
@@ -889,8 +935,8 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
           {isClosed && (
             <div className="rounded-2xl border border-red-800/70 bg-red-950/40 p-5">
               <p className="text-xs font-black uppercase tracking-widest text-red-300">Sala encerrada</p>
-              <h2 className="mt-2 text-2xl font-black text-white">Esta sala foi fechada.</h2>
-              <p className="mt-2 text-sm leading-6 text-red-100/80">A fila e a administração estão bloqueadas. Os dados continuam disponíveis para consulta.</p>
+              <h2 className="mt-2 text-2xl font-black text-white">Essa sala já foi encerrada.</h2>
+              <p className="mt-2 text-sm leading-6 text-red-100/80">O karaokê dessa turma acabou por hoje. A fila ficou só para consulta.</p>
             </div>
           )}
           <ErrorBanner message={actionError} />
@@ -908,7 +954,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                 )}
               </div>
             ) : (
-              <p className="mt-4 text-sm text-slate-500">Ninguém cantando agora.</p>
+              <p className="mt-4 text-sm text-slate-500">Ninguém está cantando agora.</p>
             )}
             {!isClosed && currentItem && (isOwner || currentIsMe) && (
               <div className="mt-5 grid gap-2 sm:grid-cols-2">
@@ -916,7 +962,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                   <CheckIcon /> {currentIsMe ? 'Concluir minha vez' : 'Concluir apresentação'}
                 </PrimaryButton>
                 <SecondaryButton onClick={() => handleSkipItem(currentItem)} disabled={actionLoading || isClosed}>
-                  Passar vez
+                  Passar minha vez
                 </SecondaryButton>
               </div>
             )}
@@ -929,7 +975,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                 <div className="min-w-0">
                   <p className="truncate text-lg font-black text-white">{me.name}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-400">
-                    Status: <span className="text-purple-300">{myStatus}</span>{myPosition ? ` • ${myPosition}º na fila` : ''}
+                    <span className="text-purple-300">{myStatus}</span>{myPosition ? ` • ${myPosition}º na fila` : ''}
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full border border-slate-700 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -941,13 +987,13 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                 {!isClosed && activeOwnItem?.status === 'waiting' && (
                   <>
                     <SecondaryButton onClick={() => handleRemoveItem(activeOwnItem)} disabled={actionLoading || isClosed}>Sair da fila</SecondaryButton>
-                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading || isClosed}>Passar vez</SecondaryButton>
+                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading || isClosed}>Passar minha vez</SecondaryButton>
                   </>
                 )}
                 {!isClosed && activeOwnItem?.status === 'on_stage' && (
                   <>
                     <PrimaryButton onClick={handleFinishCurrent} disabled={actionLoading || isClosed}>Concluir minha vez</PrimaryButton>
-                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading || isClosed}>Passar vez</SecondaryButton>
+                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading || isClosed}>Passar minha vez</SecondaryButton>
                   </>
                 )}
               </div>
@@ -970,7 +1016,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                 </div>
               )}
               {waitingItems.length === 0 ? (
-                <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">A fila está vazia.</p>
+                <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">A fila está vazia. Coragem, alguém precisa começar.</p>
               ) : waitingItems.map((item, index) => {
                 const isMine = item.member_id === me.id;
                 const canManageItem = isOwner || isMine;
@@ -999,7 +1045,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                             </IconButton>
                           </>
                         )}
-                        <IconButton label="Passar vez" onClick={() => handleSkipItem(item)} disabled={actionLoading}>
+                        <IconButton label="Passar minha vez" onClick={() => handleSkipItem(item)} disabled={actionLoading}>
                           <SkipForwardIcon />
                         </IconButton>
                         <IconButton label="Remover da fila" onClick={() => handleRemoveItem(item)} disabled={actionLoading} tone="danger">
@@ -1048,7 +1094,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                   </button>
                 ) : (
                   <div className="rounded-xl border border-red-900/60 bg-red-950/30 p-3">
-                    <p className="text-sm font-semibold text-red-100">Tem certeza que deseja fechar esta sala? Ninguém mais poderá entrar ou alterar a fila.</p>
+                    <p className="text-sm font-semibold text-red-100">{MESSAGES.closeConfirm}</p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button type="button" onClick={handleCloseRoom} disabled={actionLoading} className="min-h-10 rounded-lg bg-red-700 px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
                         {actionLoading ? 'Fechando...' : 'Confirmar'}
@@ -1104,7 +1150,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                   {selectedTransferMember && (
                     <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
                       <p className="text-sm font-semibold leading-6 text-slate-200">
-                        Transferir a sala para {selectedTransferMember.name}? Você continuará na sala como convidado.
+                        {MESSAGES.transferConfirm(selectedTransferMember.name)}
                       </p>
                       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <PrimaryButton onClick={handleConfirmTransfer} disabled={actionLoading}>
@@ -1171,6 +1217,7 @@ export default function App() {
   const [screen, setScreen] = useState(initialRoomCode ? 'join' : 'home');
   const [pendingCode, setPendingCode] = useState(initialRoomCode);
   const [session, setSession] = useState(null);
+  const [roomNotice, setRoomNotice] = useState('');
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
@@ -1240,6 +1287,7 @@ export default function App() {
     try {
       const roomSession = await createRoomOnSupabase({ name: roomName, userName, user });
       setSession(roomSession);
+      setRoomNotice(MESSAGES.roomCreated);
       setScreen('room');
     } catch (createError) {
       setError(createError.message);
@@ -1260,6 +1308,7 @@ export default function App() {
     try {
       const roomSession = await joinRoomOnSupabase({ code: roomCode, userName, user });
       setSession(roomSession);
+      setRoomNotice(MESSAGES.joinedRoom);
       setScreen('room');
     } catch (joinError) {
       setError(joinError.message);
@@ -1305,9 +1354,11 @@ export default function App() {
     return (
       <RoomScreenV2
         session={session}
+        initialNotice={roomNotice}
         onReload={reloadSession}
         onLeaveRoom={() => {
           setSession(null);
+          setRoomNotice('');
           setError('');
           setScreen('home');
         }}

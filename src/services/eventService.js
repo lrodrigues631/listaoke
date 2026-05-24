@@ -9,7 +9,7 @@ export async function createRoomEvent({ roomId, type }) {
     });
 
   if (error) {
-    throw new Error(`Não foi possível registrar o evento da sala: ${error.message}`);
+    throw new Error('A ação funcionou, mas não consegui registrar no histórico agora.');
   }
 }
 
@@ -21,7 +21,7 @@ export async function listRoomEvents(roomId) {
     .order('created_at', { ascending: false });
 
   if (error) {
-    throw new Error(`Não foi possível carregar o histórico da sala: ${error.message}`);
+    throw new Error('Não consegui carregar o histórico da sala agora.');
   }
 
   return data || [];
