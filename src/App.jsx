@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ensureAnonymousSession } from './services/authService';
 import { subscribeToRoomChanges } from './services/realtimeService';
 import {
+  closeRoom,
   createRoom as createRoomOnSupabase,
   joinRoom as joinRoomOnSupabase,
   loadRoomSession,
@@ -22,6 +23,7 @@ const EVENT_LABELS = {
   member_skipped_turn: 'passou a vez',
   performance_finished: 'concluiu a apresentação',
   queue_reordered: 'reordenou a fila',
+  room_closed: 'Sala encerrada',
   room_created: 'criou a sala',
 };
 
@@ -326,6 +328,7 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
 
   const { room, me, members, queueItems, events } = session;
   const isOwner = me.role === 'owner';
+  const isClosed = room.status === 'closed';
   const currentItem = queueItems.find((item) => item.status === 'on_stage') || null;
   const waitingItems = queueItems
     .filter((item) => item.status === 'waiting')
@@ -338,6 +341,12 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
   const transferCandidates = members.filter((member) => member.id !== me.id);
 
   const runAction = async (action, successMessage) => {
+    if (isClosed) {
+      setNotice('');
+      setActionError('Sala encerrada. Não é possível alterar a fila.');
+      return;
+    }
+
     setActionLoading(true);
     setActionError('');
     setNotice('');
@@ -396,7 +405,10 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
   };
 
   const handleCloseRoom = () => {
-    setNotice('Fechar sala ainda não foi conectado ao Supabase nesta etapa.');
+    runAction(
+      () => closeRoom({ roomId: room.id, userId: me.user_id }),
+      'Sala encerrada.'
+    );
   };
 
   const handleOpenTransfer = () => {
@@ -629,7 +641,7 @@ function RoomScreen({ session, onReload, onLeaveRoom }) {
                       </div>
                     </div>
 
-                    {canManageItem && (
+                    {!isClosed && canManageItem && (
                       <div className="flex items-center gap-1">
                         {isOwner && (
                           <>
@@ -693,6 +705,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
 
   const { room, me, members, queueItems, events } = session;
   const isOwner = me.role === 'owner';
+  const isClosed = room.status === 'closed';
   const currentItem = queueItems.find((item) => item.status === 'on_stage') || null;
   const waitingItems = queueItems
     .filter((item) => item.status === 'waiting')
@@ -711,6 +724,12 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
   ));
 
   const runAction = async (action, successMessage) => {
+    if (isClosed) {
+      setNotice('');
+      setActionError('Sala encerrada. Não é possível alterar a fila.');
+      return;
+    }
+
     setActionLoading(true);
     setActionError('');
     setNotice('');
@@ -780,8 +799,12 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
   };
 
   const handleCloseRoom = () => {
-    setShowCloseConfirm(false);
-    setNotice('Fechar sala ainda não foi conectado ao Supabase nesta etapa.');
+    runAction(
+      () => closeRoom({ roomId: room.id, userId: me.user_id }),
+      'Sala encerrada.'
+    ).then(() => {
+      setShowCloseConfirm(false);
+    });
   };
 
   const handleOpenTransfer = () => {
@@ -840,6 +863,13 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
               {notice}
             </div>
           )}
+          {isClosed && (
+            <div className="rounded-2xl border border-red-800/70 bg-red-950/40 p-5">
+              <p className="text-xs font-black uppercase tracking-widest text-red-300">Sala encerrada</p>
+              <h2 className="mt-2 text-2xl font-black text-white">Esta sala foi fechada.</h2>
+              <p className="mt-2 text-sm leading-6 text-red-100/80">A fila e a administração estão bloqueadas. Os dados continuam disponíveis para consulta.</p>
+            </div>
+          )}
           <ErrorBanner message={actionError} />
 
           <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-b from-slate-900 to-slate-950 p-5 shadow-2xl shadow-slate-950/50">
@@ -857,12 +887,12 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
             ) : (
               <p className="mt-4 text-sm text-slate-500">Ninguém cantando agora.</p>
             )}
-            {currentItem && (isOwner || currentIsMe) && (
+            {!isClosed && currentItem && (isOwner || currentIsMe) && (
               <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                <PrimaryButton onClick={handleFinishCurrent} disabled={actionLoading}>
+                <PrimaryButton onClick={handleFinishCurrent} disabled={actionLoading || isClosed}>
                   <CheckIcon /> {currentIsMe ? 'Concluir minha vez' : 'Concluir apresentação'}
                 </PrimaryButton>
-                <SecondaryButton onClick={() => handleSkipItem(currentItem)} disabled={actionLoading}>
+                <SecondaryButton onClick={() => handleSkipItem(currentItem)} disabled={actionLoading || isClosed}>
                   Passar vez
                 </SecondaryButton>
               </div>
@@ -884,17 +914,17 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                 </span>
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {!activeOwnItem && <PrimaryButton onClick={() => handleJoinQueue()} disabled={actionLoading}>Entrar na fila</PrimaryButton>}
-                {activeOwnItem?.status === 'waiting' && (
+                {!activeOwnItem && !isClosed && <PrimaryButton onClick={() => handleJoinQueue()} disabled={actionLoading || isClosed}>Entrar na fila</PrimaryButton>}
+                {!isClosed && activeOwnItem?.status === 'waiting' && (
                   <>
-                    <SecondaryButton onClick={() => handleRemoveItem(activeOwnItem)} disabled={actionLoading}>Sair da fila</SecondaryButton>
-                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading}>Passar vez</SecondaryButton>
+                    <SecondaryButton onClick={() => handleRemoveItem(activeOwnItem)} disabled={actionLoading || isClosed}>Sair da fila</SecondaryButton>
+                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading || isClosed}>Passar vez</SecondaryButton>
                   </>
                 )}
-                {activeOwnItem?.status === 'on_stage' && (
+                {!isClosed && activeOwnItem?.status === 'on_stage' && (
                   <>
-                    <PrimaryButton onClick={handleFinishCurrent} disabled={actionLoading}>Concluir minha vez</PrimaryButton>
-                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading}>Passar vez</SecondaryButton>
+                    <PrimaryButton onClick={handleFinishCurrent} disabled={actionLoading || isClosed}>Concluir minha vez</PrimaryButton>
+                    <SecondaryButton onClick={() => handleSkipItem(activeOwnItem)} disabled={actionLoading || isClosed}>Passar vez</SecondaryButton>
                   </>
                 )}
               </div>
@@ -962,7 +992,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
         </section>
 
         <aside className="grid content-start gap-4">
-          {isOwner && (
+          {isOwner && !isClosed && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
               <h2 className="text-sm font-black uppercase tracking-widest text-white">Administração da sala</h2>
 
@@ -975,8 +1005,8 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                     <button
                       key={member.id}
                       type="button"
-                      onClick={() => handleJoinQueue(member.id, member.name)}
-                      disabled={actionLoading}
+                          onClick={() => handleJoinQueue(member.id, member.name)}
+                          disabled={actionLoading || isClosed}
                       className="mb-2 min-h-10 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 text-left text-sm font-bold text-slate-200 transition hover:border-purple-700"
                     >
                       {member.name}
@@ -995,9 +1025,11 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
                   </button>
                 ) : (
                   <div className="rounded-xl border border-red-900/60 bg-red-950/30 p-3">
-                    <p className="text-sm font-semibold text-red-100">Tem certeza que deseja fechar a sala?</p>
+                    <p className="text-sm font-semibold text-red-100">Tem certeza que deseja fechar esta sala? Ninguém mais poderá entrar ou alterar a fila.</p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button type="button" onClick={handleCloseRoom} className="min-h-10 rounded-lg bg-red-700 px-3 text-sm font-black text-white">Confirmar</button>
+                      <button type="button" onClick={handleCloseRoom} disabled={actionLoading} className="min-h-10 rounded-lg bg-red-700 px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                        {actionLoading ? 'Fechando...' : 'Confirmar'}
+                      </button>
                       <SecondaryButton onClick={() => setShowCloseConfirm(false)}>Cancelar</SecondaryButton>
                     </div>
                   </div>
@@ -1006,7 +1038,7 @@ function RoomScreenV2({ session, onReload, onLeaveRoom }) {
             </div>
           )}
 
-          {isOwner && isTransferOpen && (
+          {isOwner && !isClosed && isTransferOpen && (
             <div className="rounded-2xl border border-purple-500/30 bg-slate-900 p-4 shadow-xl">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>

@@ -86,6 +86,23 @@ export async function transferRoomOwnership({ roomId, newOwnerMemberId }) {
   }
 }
 
+export async function closeRoom({ roomId, userId }) {
+  const { error } = await supabase
+    .from('rooms')
+    .update({
+      status: 'closed',
+      closed_at: new Date().toISOString(),
+      closed_by_user_id: userId,
+    })
+    .eq('id', roomId);
+
+  if (error) {
+    throw new Error(`Não foi possível fechar a sala: ${error.message}`);
+  }
+
+  await createRoomEvent({ roomId, type: 'room_closed' });
+}
+
 export async function createRoom({ name, userName, user }) {
   const { data: code, error: codeError } = await supabase.rpc('generate_room_code');
 
